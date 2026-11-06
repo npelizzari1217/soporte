@@ -344,6 +344,23 @@ describe('PrismaTareaTicketRepository (T1, tenant efímero)', () => {
     ).resolves.toEqual([{ completadaPorId: TECNICO_B, completadas: 1 }]);
   });
 
+  it('S10: las tareas de un ticket EXTERNA no suman en «tareas completadas por técnico»', async () => {
+    const interno = await crearTicket();
+    const externo = await crearTicket();
+    await client.ticket.update({ where: { id: externo }, data: { modalidad: 'EXTERNA' } });
+    const desde = new Date('2026-10-01T00:00:00Z');
+    const hasta = new Date('2026-11-01T00:00:00Z');
+    for (const ticketId of [interno, externo]) {
+      const t = await crearTarea(ticketId, `t-${ticketId}`, 0, TECNICO_A);
+      t.completar(TECNICO_A, new Date('2026-10-15T00:00:00Z'));
+      await enTenant(() => repo.completarSiPendiente(t));
+    }
+
+    await expect(
+      enTenant(() => repo.contarCompletadasPorTecnico({ desde, hasta })),
+    ).resolves.toEqual([{ completadaPorId: TECNICO_A, completadas: 1 }]);
+  });
+
   it('el CHECK rechaza una tarea completada sin quién o cuándo, y una pendiente con registro', async () => {
     const ticketId = await crearTicket();
     const base = { ticketId, descripcion: 'x', orden: 0 };

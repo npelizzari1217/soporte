@@ -1,5 +1,5 @@
 import { DomainError, Result } from '../../../shared/domain/result';
-import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import { TicketEntity, modalidadEsEditable } from '../../../tickets/domain/entities/ticket.entity';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
 import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
@@ -36,6 +36,11 @@ export interface ReparacionConTicket {
   bloqueada: boolean;
   /** Compras vinculadas que HOY frenan el ticket. Ausencia de bloqueo = `[]`, nunca `undefined`. */
   comprasQueBloquean: CompraVinculada[];
+  /**
+   * `true` si la modalidad se puede cambiar hoy: sin tareas activas ni compras vinculadas, todas,
+   * también las que el actor no ve (odd/edilicia-obra-externa, S1). Misma regla que la edición.
+   */
+  modalidadEditable: boolean;
   /**
    * Nombre del sector del ticket (odd/ubicacion-sector-ticket), incluso si el sector está
    * desactivado. `null` si el ticket no tiene sector.
@@ -203,19 +208,24 @@ export class ListarReparacionesUseCase {
     return tickets.map((ticket) => {
       // Sin compras, tareas o comentarios el lote no trae entrada: la ausencia es `[]` o `0`,
       // nunca `undefined`.
-      const bloqueantes = comprasQueBloquean(comprasVinculadasPorTicket.get(ticket.id) ?? []);
+      const vinculadas = comprasVinculadasPorTicket.get(ticket.id) ?? [];
+      const bloqueantes = comprasQueBloquean(vinculadas);
       const tareas = tareasPorTicket.get(ticket.id) ?? [];
       const comentarios = comentariosPorTicket.get(ticket.id) ?? { publicos: 0, internos: 0 };
       const veInternos = tieneAccionSobreTipo(alcance, ticket.tipoId, 'OBSERVAR');
       return {
         ticket,
         subtareas: tareas,
-        porcentajeAvance: calcularAvanceTareas(tareas).porcentaje,
+        porcentajeAvance: calcularAvanceTareas(tareas, ticket.modalidad).porcentaje,
         cantidadComentarios: comentarios.publicos + (veInternos ? comentarios.internos : 0),
         // El bloqueo cuenta todas las compras; la lista publica solo las que el actor ve, para
         // no exponer el número ni el id de una compra de otro tipo (odd/compras-por-tipo, S2).
         bloqueada: bloqueantes.length > 0,
         comprasQueBloquean: bloqueantes.filter((compra) => esCompraVisiblePara(compra, alcance)),
+        modalidadEditable: modalidadEsEditable(
+          tareas.filter((tarea) => !tarea.isDeleted()).length,
+          vinculadas.length,
+        ),
         sectorNombre: ticket.sectorId ? (nombresSectores.get(ticket.sectorId) ?? null) : null,
       };
     });

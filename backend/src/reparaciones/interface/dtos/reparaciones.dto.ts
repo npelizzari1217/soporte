@@ -11,6 +11,7 @@
 import { Transform, Type } from 'class-transformer';
 import {
   IsIn,
+  ValidateIf,
   IsInt,
   IsOptional,
   IsString,
@@ -24,6 +25,8 @@ import {
   TICKET_TITULO_MAX_LENGTH,
   TICKET_UBICACION_MAX_LENGTH,
   TicketEntity,
+  MODALIDADES_TICKET,
+  ModalidadTicket,
 } from '../../../tickets/domain/entities/ticket.entity';
 import {
   FILTROS_BLOQUEO,
@@ -78,6 +81,12 @@ export class CreateTicketEdilicioHttpDto {
   @IsOptional()
   @IsUUID()
   sectorId?: string | null;
+
+  /** Modalidad de ejecución (odd/edilicia-obra-externa S1). Ausente equivale a `'INTERNA'`. */
+  // ValidateIf y no IsOptional: IsOptional deja pasar null, y un null volveria INTERNA al ticket.
+  @ValidateIf((_, v: unknown) => v !== undefined)
+  @IsIn(MODALIDADES_TICKET)
+  modalidad?: ModalidadTicket;
 }
 
 /**
@@ -133,6 +142,12 @@ export class EditarReparacionHttpDto {
   @IsOptional()
   @IsUUID()
   sectorId?: string | null;
+
+  /** Modalidad (odd/edilicia-obra-externa S1). Solo cambia sin tareas ni compras; ausente no toca. */
+  // ValidateIf y no IsOptional: IsOptional deja pasar null, y un null volveria INTERNA al ticket.
+  @ValidateIf((_, v: unknown) => v !== undefined)
+  @IsIn(MODALIDADES_TICKET)
+  modalidad?: ModalidadTicket;
 }
 
 /**
@@ -174,6 +189,8 @@ export interface TicketEdiliciaConTicketResponseDto {
   ubicacion: string | null;
   /** Sector del ticket (odd/ubicacion-sector-ticket). */
   sectorId: string | null;
+  /** Modalidad de ejecución (odd/edilicia-obra-externa S1). */
+  modalidad: ModalidadTicket;
   /** Nombre del sector, resuelto por el backend (incluso si está desactivado). */
   sectorNombre: string | null;
   porcentajeAvance: number;
@@ -207,6 +224,7 @@ export function toTicketEdiliciaResponseDto(
     estadoId: ticket.estadoId,
     ubicacion: ticket.ubicacion,
     sectorId: ticket.sectorId,
+    modalidad: ticket.modalidad,
     sectorNombre,
     porcentajeAvance,
     createdAt: ticket.createdAt.toISOString(),
@@ -238,6 +256,8 @@ export interface ReparacionListItemResponseDto extends TicketEdiliciaConTicketRe
   bloqueada: boolean;
   /** Compras que frenan la reparación. `[]` cuando no está bloqueada. */
   comprasQueBloquean: CompraQueBloqueaResponseDto[];
+  /** `true` si la modalidad se puede cambiar hoy (odd/edilicia-obra-externa, S1). */
+  modalidadEditable: boolean;
 }
 
 /**
@@ -311,6 +331,7 @@ export function toReparacionListItemResponseDto(
       id: compra.compraId,
       numero: compra.numero,
     })),
+    modalidadEditable: item.modalidadEditable,
   };
 }
 

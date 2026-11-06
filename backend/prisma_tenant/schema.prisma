@@ -340,6 +340,9 @@ model Ticket {
   /// Fecha objetivo (odd/preventivo-anticipacion): la fecha del ciclo del plan preventivo que generó
   /// el ticket. Informativa, sin efecto en el SLA. NULL en los tickets que no salen de un plan.
   fechaObjetivo      DateTime? @map("fecha_objetivo") @db.Date
+  /// Modalidad de ejecución (odd/edilicia-obra-externa S1): 'INTERNA' o 'EXTERNA'.
+  /// CHECK tickets_modalidad_check — migration SQL. Este @default espeja el DEFAULT del DDL.
+  modalidad          String    @default("INTERNA") @db.VarChar(10)
   /// Recordatorio de preventivo enviado (odd/preventivo-anticipacion T3): lo marca solo el UPDATE acotado
   /// del barrido, en la misma transaccion que reclama el ticket. NULL = sin recordatorio. Nunca el upsert.
   recordatorioEnviadoAt DateTime? @map("recordatorio_enviado_at") @db.Timestamptz
@@ -361,6 +364,8 @@ model Ticket {
   ticketSoporte         TicketSoporte?
   encuestasSatisfaccion EncuestaSatisfaccion[]
   tareas                TareaTicket[]
+  /// Certificados de avance de obra (odd/edilicia-obra-externa, T3b).
+  certificaciones       CertificacionAvance[]
   /// Compras vinculadas al ticket, de cualquier tipo (odd/ticket-unificado).
   comprasVinculadas     TicketCompra[]
   /// Back-relation opcional: NO todo ticket nace de un plan preventivo — la
@@ -453,11 +458,17 @@ model TareaTicket {
   completadaEn    DateTime? @map("completada_en") @db.Timestamptz
   /// Soft ref → master.usuarios.id. Quién completó la tarea; NULL mientras está pendiente.
   completadaPorId String?   @map("completada_por_id") @db.Uuid
+  /// Porcentaje entero de la obra que representa la tarea (odd/edilicia-obra-externa, S4). Solo se
+  /// usa en tickets EXTERNA. CHECK `tareas_ticket_peso_check` (0..100); la suma del ticket la acota
+  /// el dominio (`PESO_TAREAS_MAX`).
+  peso            Int       @default(0)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  /// Certificados en los que entró la tarea (odd/edilicia-obra-externa, S5).
+  certificaciones CertificacionTarea[]
 
   @@index([ticketId, deletedAt, orden])
   @@index([completadaEn, completadaPorId])
@@ -465,6 +476,51 @@ model TareaTicket {
   // EXISTS sobre las tareas activas de las que es técnico.
   @@index([tecnicoId, deletedAt, ticketId])
   @@map("tareas_ticket")
+}
+
+// ─── CERTIFICADOS DE AVANCE (odd/edilicia-obra-externa, T3b) ─────────────────
+//
+// Un certificado agrupa tareas completadas de un ticket EXTERNA y vale la suma de sus pesos, con una
+// COPIA del peso de cada tarea (S8). Una tarea entra en un solo certificado vigente (S5): índice
+// único PARCIAL `certificacion_tarea_tarea_vigente_key` (raw SQL; Prisma no expresa el WHERE).
+// CHECKs de numero, porcentaje, peso y anulación atómica — migration SQL.
+model CertificacionAvance {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId        String    @map("ticket_id") @db.Uuid
+  /// Correlativo por ticket, asignado con el lock del ticket tomado.
+  numero          Int
+  /// Suma de los pesos copiados de sus tareas (0..100).
+  porcentaje      Int
+  /// Soft ref → master.usuarios.id.
+  emitidoPorId    String    @map("emitido_por_id") @db.Uuid
+  emitidoEn       DateTime  @default(now()) @map("emitido_en") @db.Timestamptz
+  anuladoEn       DateTime? @map("anulado_en") @db.Timestamptz
+  /// Soft ref → master.usuarios.id.
+  anuladoPorId    String?   @map("anulado_por_id") @db.Uuid
+  motivoAnulacion String?   @map("motivo_anulacion") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  ticket Ticket               @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  tareas CertificacionTarea[]
+
+  @@unique([ticketId, numero])
+  @@map("certificaciones_avance")
+}
+
+model CertificacionTarea {
+  certificacionId String  @map("certificacion_id") @db.Uuid
+  tareaId         String  @map("tarea_id") @db.Uuid
+  /// Copia del peso de la tarea al emitir (S8).
+  peso            Int
+  /// false cuando el certificado se anula: la tarea queda libre.
+  vigente         Boolean @default(true)
+
+  certificacion CertificacionAvance @relation(fields: [certificacionId], references: [id], onDelete: Restrict)
+  tarea         TareaTicket         @relation(fields: [tareaId], references: [id], onDelete: Restrict)
+
+  @@id([certificacionId, tareaId])
+  @@map("certificacion_tarea")
 }
 
 // ─── OPERACIONES_TICKET (timeline inmutable de eventos) ───────────────────────
@@ -1250,6 +1306,11 @@ model ItemCompra {
   /// pregunta de fabricar movimientos retroactivos con fecha falsa. El NULL
   /// significa "sin insumo" y la recepción de ese ítem funciona como antes.
   insumoId             String?   @map("insumo_id") @db.Uuid
+  /// El ítem contrata un servicio y no un insumo (odd/edilicia-obra-externa, S2). CHECK
+  /// `items_compra_servicio_sin_insumo_check`: un ítem de servicio no declara insumo, así que su
+  /// recepción no suma stock. Una compra cuyos ítems activos son todos de servicio no bloquea el
+  /// ticket vinculado (`comprasQueBloquean`).
+  esServicio           Boolean   @default(false) @map("es_servicio")
   /// CHECK (cantidad > 0) — migration SQL.
   cantidad             Decimal   @db.Decimal(10, 2)
   proveedor            String    @db.VarChar(255)

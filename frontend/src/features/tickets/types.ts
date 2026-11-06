@@ -9,6 +9,7 @@
  */
 
 import type { Modulo } from "@/shared/auth/modulo-access";
+import type { ModalidadTicket } from "./modalidad";
 
 export type TicketEstadoCodigo = "NUEVO" | "ASIGNADO" | "EN_PROCESO" | "ESPERANDO_CLIENTE" | "RESUELTO" | "CERRADO" | "CANCELADO";
 
@@ -46,6 +47,13 @@ export interface Ticket {
    * qué compra lo bloquea (L19). Ausente en el listado.
    */
   bloqueada?: boolean;
+  /** Modalidad de ejecución (odd/edilicia-obra-externa, S1). */
+  modalidad: ModalidadTicket;
+  /**
+   * Solo en el detalle: `true` si la modalidad se puede cambiar hoy (sin tareas activas ni compras
+   * vinculadas). Lo decide el backend porque la pantalla no siempre ve las compras.
+   */
+  modalidadEditable?: boolean;
   /** Calculado por el módulo SLA (Fase 4). `null` = sin SLA aplicable/calculado aún. */
   slaVenceAt: string | null;
   /** Desnormalizado: deduplicador del mail del barrido. Lo que se muestra es `sla`. */
@@ -160,6 +168,8 @@ export interface CrearTicketDto {
   /** Texto libre, hasta 255 (odd/ubicacion-sector-ticket). */
   ubicacion?: string | null;
   sectorId?: string | null;
+  /** Ausente = `INTERNA` (odd/edilicia-obra-externa, S1). */
+  modalidad?: ModalidadTicket;
 }
 
 /** PATCH parcial: en `ubicacion` y `sectorId`, `null` limpia y ausente no toca. */
@@ -169,6 +179,8 @@ export interface EditarTicketDto {
   prioridadId?: string;
   ubicacion?: string | null;
   sectorId?: string | null;
+  /** Ausente no toca; solo cambia sin tareas ni compras vinculadas. */
+  modalidad?: ModalidadTicket;
 }
 
 export interface ComentarioDto {
@@ -278,7 +290,36 @@ export interface TareaTicket {
   completadaPorId: string | null;
   completadaPorNombre: string | null;
   completadaPorApellido: string | null;
+  /** Porcentaje entero de la obra (odd/edilicia-obra-externa, S4); solo significa algo en EXTERNA. */
+  peso: number;
   createdAt: string;
+}
+
+/** Una tarea de un certificado, con el peso COPIADO al emitir (odd/edilicia-obra-externa, S8). */
+export interface TareaDeCertificado {
+  tareaId: string;
+  /** Descripción vigente de la tarea, o `null` si no se pudo resolver. */
+  descripcion: string | null;
+  peso: number;
+}
+
+/** Certificado de avance de obra (espejo de `CertificadoResponseDto`, odd/edilicia-obra-externa, S5-S8). */
+export interface CertificadoAvance {
+  id: string;
+  ticketId: string;
+  numero: number;
+  porcentaje: number;
+  vigente: boolean;
+  emitidoPorId: string;
+  emitidoPorNombre: string | null;
+  emitidoPorApellido: string | null;
+  emitidoEn: string;
+  anuladoEn: string | null;
+  anuladoPorId: string | null;
+  anuladoPorNombre: string | null;
+  anuladoPorApellido: string | null;
+  motivoAnulacion: string | null;
+  tareas: TareaDeCertificado[];
 }
 
 /** Avance sobre las tareas activas (espejo de `AvanceTareas` de `avance-tareas.ts`). */

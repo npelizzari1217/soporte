@@ -553,6 +553,48 @@ describe('CHECKs de compras/items_compra/operaciones_compra — migración 20260
    * no es un error del usuario, es un error del desarrollador. Se ataja acá, en
    * el test, antes de que llegue a producción.
    */
+  // ─── items_compra_servicio_sin_insumo_check (odd/edilicia-obra-externa, S2) ───
+
+  describe('CHECK items_compra_servicio_sin_insumo_check', () => {
+    /** Inserta un ítem con `es_servicio`/`insumo_id` dados y devuelve su `es_servicio` leído. */
+    async function insertItemServicio(
+      compraId: string,
+      esServicio: boolean | null,
+      insumoId: string | null,
+    ): Promise<boolean> {
+      const columnas = esServicio === null ? '' : ', es_servicio';
+      const valores = esServicio === null ? '' : ', $3';
+      const params: unknown[] = [compraId, insumoId];
+      if (esServicio !== null) params.push(esServicio);
+      const result = await client.query(
+        `INSERT INTO items_compra (id, compra_id, descripcion, cantidad, proveedor, monto, moneda, fecha_cotizacion, estado_aprobacion, insumo_id, updated_at${columnas})
+         VALUES (gen_random_uuid(), $1, 'Item de test', 1, 'Proveedor test', 100, 'ARS', '2026-01-01', 'PENDIENTE', $2, now()${valores})
+         RETURNING es_servicio`,
+        params,
+      );
+      return result.rows[0].es_servicio as boolean;
+    }
+
+    // El insumo no existe: el CHECK corre antes que la FK, y el regex exige el nombre del CHECK,
+    // así que un rechazo por FK no pondría este test en verde.
+    it('rechaza un ítem de servicio que declara insumo', async () => {
+      const compraId = await insertCompraValida();
+      await expect(
+        insertItemServicio(compraId, true, '01966a6a-0000-7000-8000-0000000000ff'),
+      ).rejects.toThrow(/items_compra_servicio_sin_insumo_check/);
+    });
+
+    it('acepta un ítem de servicio sin insumo', async () => {
+      const compraId = await insertCompraValida();
+      expect(await insertItemServicio(compraId, true, null)).toBe(true);
+    });
+
+    it('sin declarar la columna, el ítem nace como bien (DEFAULT false)', async () => {
+      const compraId = await insertCompraValida();
+      expect(await insertItemServicio(compraId, null, null)).toBe(false);
+    });
+  });
+
   describe('Las listas del CHECK y las de TypeScript no derivan', () => {
     /** Extrae los literales de un CHECK leyendo su definición real de Postgres. */
     async function valoresDelCheck(nombre: string): Promise<string[]> {

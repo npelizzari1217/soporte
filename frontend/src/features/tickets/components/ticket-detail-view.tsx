@@ -62,6 +62,7 @@ import { TicketEquipoMantenimientoCard } from "./ticket-equipo-mantenimiento-car
 import { TicketPdfButton } from "./ticket-pdf-button";
 import { TicketBorrarButton } from "./ticket-borrar-button";
 import { TicketTareas } from "./ticket-tareas";
+import { TicketCertificados } from "./ticket-certificados";
 import { TicketCompras } from "./ticket-compras";
 import { TicketTiempoTecnico } from "./ticket-tiempo-tecnico";
 import { useComprasDeTicket } from "../hooks/use-compras-de-ticket";
@@ -227,12 +228,14 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
                     prioridadId: ticket.prioridadId,
                     ubicacion: ticket.ubicacion ?? "",
                     sectorId: ticket.sectorId ?? "",
+                    modalidad: ticket.modalidad,
                   }}
                   // `undefined` mientras la query no resolvió (cargando o error):
                   // `TicketEditForm` lo necesita para no etiquetar por error un
                   // valor activo como "dado de baja" (ver JSDoc de la prop).
                   prioridades={prioridadesQuery.data}
                   sectorNombre={ticket.sectorNombre}
+                  modalidadEditable={ticket.modalidadEditable === true}
                   onSubmit={(dto) => editarMutation.mutate(dto)}
                   isSubmitting={editarMutation.isPending}
                 />
@@ -272,8 +275,28 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
           asignadoId={ticket.asignadoId}
           tipoId={ticket.tipoId}
           motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, bloqueadoPorCompra, esAdminCliente)}
+          modalidad={ticket.modalidad}
+          estadoCodigo={estadoCodigo}
         />
       </section>
+
+      {/* Certificados de avance de obra: solo en un ticket EXTERNA (odd/edilicia-obra-externa, T4). */}
+      {ticket.modalidad === "EXTERNA" && (
+        <section
+          aria-labelledby="certificados-titulo"
+          className="rounded-lg border border-border bg-seccion-tareas p-6"
+        >
+          <h2 id="certificados-titulo" className="mb-4 text-sm font-semibold text-foreground">
+            Certificados de avance
+          </h2>
+          <TicketCertificados
+            ticketId={ticket.id}
+            puedeCertificar={puede("CERTIFICAR")}
+            estadoCodigo={estadoCodigo}
+            puedeImprimir={puede("IMPRESION")}
+          />
+        </section>
+      )}
 
       {/* Tiempo de cada técnico contra la meta (odd/tasks/tiempo-tecnico.md, T4): sin tramos no se monta. */}
       <TicketTiempoTecnico ticketId={ticket.id} />

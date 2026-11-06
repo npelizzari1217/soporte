@@ -20,6 +20,7 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { TicketsController, toHttpException } from './tickets.controller';
+import { ConsultaModalidadEditable } from '../../application/services/modalidad-editable';
 import { accionesPorRuta } from '../../../shared/test-helpers/acciones-por-ruta';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
@@ -170,6 +171,7 @@ type DependenciasControlador = {
   bloqueoRepo: {
     estaBloqueadoPorCompra: Mock<IBloqueoTicketRepository['estaBloqueadoPorCompra']>;
   };
+  modalidadEditable: { esEditable: Mock<ConsultaModalidadEditable['esEditable']> };
 };
 
 type ControladorDeTest = DependenciasControlador & {
@@ -232,6 +234,10 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
         .fn<IBloqueoTicketRepository['estaBloqueadoPorCompra']>()
         .mockResolvedValue(false),
     },
+    // Default editable: solo los tests de `modalidadEditable` en el detalle lo pisan.
+    modalidadEditable: overrides.modalidadEditable ?? {
+      esEditable: vi.fn<ConsultaModalidadEditable['esEditable']>().mockResolvedValue(true),
+    },
   };
   // `findAll`/`exportar` resuelven nombres batch de los items — con lista vacía
   // devuelve un Map vacío sin N+1.
@@ -282,6 +288,7 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     casoReal(RecuperarTicketUseCase, deps.recuperarTicket),
     casoReal(ListarAgentesFiltroTicketsUseCase, deps.listarAgentes),
     deps.bloqueoRepo,
+    deps.modalidadEditable,
   );
   return { controller, ...deps, usuarioMasterChecker };
 }
@@ -1356,6 +1363,26 @@ describe('TicketsController.findOne — bloqueo por compra en el detalle (odd/ti
     },
   );
 
+  it.each([true, false])(
+    'el detalle informa modalidadEditable=%s, tal como lo decide la consulta (odd/edilicia-obra-externa, S1)',
+    async (editable) => {
+      const obtenerTicket = {
+        execute: vi
+          .fn<ObtenerTicketUseCase['execute']>()
+          .mockResolvedValue(Result.ok(ticketVisible())),
+      };
+      const modalidadEditable = {
+        esEditable: vi.fn<ConsultaModalidadEditable['esEditable']>().mockResolvedValue(editable),
+      };
+      const { controller } = buildController({ obtenerTicket, modalidadEditable });
+
+      const respuesta = await controller.findOne(LECTOR_SIN_COMPRAS, 'ticket-bloq-1');
+
+      expect(respuesta.modalidadEditable).toBe(editable);
+      expect(modalidadEditable.esEditable).toHaveBeenCalledWith('ticket-bloq-1');
+    },
+  );
+
   it('un ticket que el actor no ve responde 404 sin consultar su bloqueo', async () => {
     const obtenerTicket = {
       execute: vi
@@ -1363,12 +1390,16 @@ describe('TicketsController.findOne — bloqueo por compra en el detalle (odd/ti
         .mockResolvedValue(Result.fail(new TicketNoEncontradoError('ticket-ajeno'))),
     };
     const bloqueoRepo = conBloqueo(true);
-    const { controller } = buildController({ obtenerTicket, bloqueoRepo });
+    const modalidadEditable = {
+      esEditable: vi.fn<ConsultaModalidadEditable['esEditable']>().mockResolvedValue(true),
+    };
+    const { controller } = buildController({ obtenerTicket, bloqueoRepo, modalidadEditable });
 
     await expect(controller.findOne(LECTOR_SIN_COMPRAS, 'ticket-ajeno')).rejects.toBeInstanceOf(
       NotFoundException,
     );
     expect(bloqueoRepo.estaBloqueadoPorCompra).not.toHaveBeenCalled();
+    expect(modalidadEditable.esEditable).not.toHaveBeenCalled();
   });
 
   it('el listado no trae bloqueada: es un dato del detalle', async () => {
@@ -1400,8 +1431,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 36 clases de error (32 previas + las tres del borrado, S8 y L45, + la de la lista de agentes)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(36);
+  it('el catálogo tiene EXACTAMENTE 37 clases de error (32 previas + las tres del borrado, S8 y L45, + la de la lista de agentes + la de modalidad)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(37);
   });
 
   const TABLA: Array<[string, () => DomainError, 403 | 404 | 409 | 422]> = [
@@ -1513,6 +1544,7 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
       () => new TicketsErrors.SectorTicketInexistenteError('sector-x'),
       422,
     ],
+    ['ModalidadNoEditableError', () => new TicketsErrors.ModalidadNoEditableError(), 422],
     [
       'TipoTicketNoPermitidoEnAltaError',
       () => new TicketsErrors.TipoTicketNoPermitidoEnAltaError('PREVENTIVO'),

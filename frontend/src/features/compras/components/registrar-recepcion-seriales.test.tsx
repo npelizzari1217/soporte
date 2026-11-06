@@ -21,6 +21,7 @@ function buildItem(overrides: Partial<ItemCompra> = {}): ItemCompra {
     descripcion: "Disco",
     insumoId: INSUMO_ID,
     insumoSeguimiento: "NINGUNO",
+    esServicio: false,
     cantidad: 3,
     proveedor: "ACME",
     monto: 100,

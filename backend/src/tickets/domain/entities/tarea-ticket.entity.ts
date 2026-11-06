@@ -13,6 +13,12 @@ import {
 export const TAREA_DESCRIPCION_MAX_LENGTH = 255;
 
 /**
+ * Tope del peso de una tarea y de la suma de los pesos de un ticket, en porcentaje entero
+ * (odd/edilicia-obra-externa, S4, S9, L17). Espeja el CHECK `tareas_ticket_peso_check`.
+ */
+export const PESO_TAREAS_MAX = 100;
+
+/**
  * Precondición de `descripcion`: no vacía y dentro del tope. `throw` plano: el DTO la valida en
  * el borde, así que llegar acá con un valor inválido es un error de programación. No se aplica en
  * `reconstitute()`.
@@ -41,6 +47,8 @@ export interface TareaTicketProps {
   completadaEn: Date | null;
   /** Soft ref → master.usuarios.id. NULL si y solo si `completada` es false. */
   completadaPorId: string | null;
+  /** Porcentaje entero de la obra (0..100). Solo se usa en tickets EXTERNA; nace en 0 (L17). */
+  peso: number;
 }
 
 /**
@@ -73,6 +81,7 @@ export class TareaTicketEntity extends BaseEntity<TareaTicketProps> {
         completada: false,
         completadaEn: null,
         completadaPorId: null,
+        peso: 0,
       },
       id,
     );
@@ -118,6 +127,29 @@ export class TareaTicketEntity extends BaseEntity<TareaTicketProps> {
 
   get completadaPorId(): string | null {
     return this.props.completadaPorId;
+  }
+
+  get peso(): number {
+    return this.props.peso;
+  }
+
+  /**
+   * Fija el peso de la tarea. Un entero fuera de [0, 100] es una violación de precondición: el DTO
+   * lo valida en el borde. Que la suma del ticket no supere 100 lo decide el caso de uso, que ve
+   * las demás tareas con el lock del ticket tomado.
+   *
+   * @param peso Porcentaje entero entre 0 y `PESO_TAREAS_MAX`.
+   * @param ahora Instante del cambio, para `updatedAt`.
+   * @returns Ok, o `TareaEliminadaError` si la tarea está dada de baja.
+   */
+  asignarPeso(peso: number, ahora: Date): Result<void, DomainError> {
+    if (!Number.isInteger(peso) || peso < 0 || peso > PESO_TAREAS_MAX) {
+      throw new Error(`TareaTicketEntity: peso fuera de [0, ${PESO_TAREAS_MAX}]: ${peso}.`);
+    }
+    if (this.isDeleted()) return Result.fail(new TareaEliminadaError(this.id));
+    this.props.peso = peso;
+    this.touch(ahora);
+    return Result.ok(undefined);
   }
 
   /**

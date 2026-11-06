@@ -8,17 +8,19 @@
  *   GET    /tickets/:id/tareas/tecnicos-elegibles     → selector de técnico
  *   POST   /tickets/:id/tareas                        → alta
  *   PATCH  /tickets/:id/tareas/:tareaId/tecnico       → asignar (`null` quita)
+ *   PATCH  /tickets/:id/tareas/:tareaId/peso          → peso de un ticket EXTERNA
  *   POST   /tickets/:id/tareas/:tareaId/completar | descompletar
  *   DELETE /tickets/:id/tareas/:tareaId               → baja lógica (204)
  *
- * Cada mutación invalida las tareas y el historial del ticket (las cinco
- * escriben una operación), más las `invalidarTambien` del caller: Edilicia
+ * Cada mutación invalida las tareas y el historial del ticket (todas escriben
+ * una operación salvo el peso, que no tiene historial), más las `invalidarTambien` del caller: Edilicia
  * pasa `["reparaciones"]`, porque el avance de su listado se calcula sobre
  * estas mismas tareas.
  *
  * Errores: el `message` de Nest para tareas lleva ids crudos ("La tarea
  * "<uuid>" ya está completada."), así que 403/404/409/422 se traducen a un
- * toast propio por código; el resto sigue `notifyError`. Un 404 o un 409 dicen
+ * toast propio por código (salvo el 422 de peso, eliminar y descompletar, que trae un mensaje
+ * legible y se muestra tal cual); el resto sigue `notifyError`. Un 404 o un 409 dicen
  * que la lista quedó vieja, y un 403 puede venir de una tarea que cambió de
  * técnico en el medio (JD-S2), así que los tres también la refrescan.
  */
@@ -65,6 +67,7 @@ function useMutacionTarea<V, R>(
   mutationFn: (variables: V) => Promise<R>,
   mensajeExito: string,
   { invalidarTambien = [] }: OpcionesMutacionTareas,
+  mensaje422DelServidor = false,
 ) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -76,6 +79,11 @@ function useMutacionTarea<V, R>(
       notifySuccess(mensajeExito);
     },
     onError: (error: unknown) => {
+      // Los 422 de peso, eliminar y descompletar ya vienen en lenguaje del usuario y sin ids: se
+      // muestran tal cual, porque el texto fijo del 422 habla del técnico (odd/edilicia-obra-externa).
+      if (mensaje422DelServidor && error instanceof ApiError && error.statusCode === 422) {
+        return toast.error(error.message);
+      }
       const mensaje = error instanceof ApiError ? MENSAJES_ERROR_TAREA[error.statusCode] : undefined;
       if (!(error instanceof ApiError) || !mensaje) return notifyError(error);
       if (error.statusCode === 403 || error.statusCode === 404 || error.statusCode === 409) {
@@ -86,13 +94,24 @@ function useMutacionTarea<V, R>(
   });
 }
 
+/**
+ * Crear y eliminar cambian cuántas tareas activas tiene el ticket, y de esa cuenta depende
+ * `modalidadEditable` del detalle (odd/edilicia-obra-externa, S1): sin invalidar `["ticket", id]`
+ * la edición ofrece una modalidad que el backend ya rechaza.
+ */
+function conDetalleDelTicket(ticketId: string, opciones: OpcionesMutacionTareas): OpcionesMutacionTareas {
+  return { invalidarTambien: [["ticket", ticketId], ...(opciones.invalidarTambien ?? [])] };
+}
+
 export function useCrearTarea(ticketId: string, opciones: OpcionesMutacionTareas = {}) {
   return useMutacionTarea(
     ticketId,
     (dto: { descripcion: string }) =>
       apiFetch<TareaTicket>(`tickets/${ticketId}/tareas`, { method: "POST", json: dto }),
     "Tarea agregada.",
-    opciones,
+    conDetalleDelTicket(ticketId, opciones),
+    // Su 422 (obra externa cerrada, ticket bloqueado) trae un mensaje legible (odd/edilicia-obra-externa).
+    true,
   );
 }
 
@@ -138,6 +157,23 @@ export function useDescompletarTarea(ticketId: string, opciones: OpcionesMutacio
       apiFetch<TareaTicket>(`tickets/${ticketId}/tareas/${tareaId}/descompletar`, { method: "POST" }),
     "La tarea volvió a pendiente.",
     conEstadoDelTicket(ticketId, opciones),
+    // Su 422 (tarea certificada, ticket bloqueado) trae un mensaje legible (odd/edilicia-obra-externa, S8).
+    true,
+  );
+}
+
+/**
+ * Peso de una tarea de un ticket EXTERNA (odd/edilicia-obra-externa, S4, S9). Cambia el avance, que
+ * viaja con las tareas; Edilicia suma `["reparaciones"]` por `invalidarTambien`.
+ */
+export function usePonderarTarea(ticketId: string, opciones: OpcionesMutacionTareas = {}) {
+  return useMutacionTarea(
+    ticketId,
+    ({ tareaId, peso }: { tareaId: string; peso: number }) =>
+      apiFetch<TareaTicket>(`tickets/${ticketId}/tareas/${tareaId}/peso`, { method: "PATCH", json: { peso } }),
+    "Peso de la tarea actualizado.",
+    opciones,
+    true,
   );
 }
 
@@ -146,6 +182,8 @@ export function useEliminarTarea(ticketId: string, opciones: OpcionesMutacionTar
     ticketId,
     (tareaId: string) => apiFetch<void>(`tickets/${ticketId}/tareas/${tareaId}`, { method: "DELETE" }),
     "Tarea eliminada.",
-    opciones,
+    conDetalleDelTicket(ticketId, opciones),
+    // Su 422 (tarea certificada, ticket bloqueado) trae un mensaje legible (odd/edilicia-obra-externa, S8).
+    true,
   );
 }

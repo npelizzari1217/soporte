@@ -337,3 +337,52 @@ describe("TicketEditForm — ubicación y sector", () => {
     expect(onSubmit.mock.calls[0][0]).toMatchObject({ ubicacion: null, sectorId: SECTOR_PRIMARIA_ID });
   });
 });
+
+describe("TicketEditForm — modalidad (odd/edilicia-obra-externa, S1)", () => {
+  function renderModalidad(modalidadEditable: boolean | undefined) {
+    const onSubmit = vi.fn();
+    render(
+      <TicketEditForm
+        defaultValues={buildDefaultValues({ prioridadId: PRIORIDAD_ALTA_ID, modalidad: "INTERNA" })}
+        prioridades={PRIORIDADES_ACTIVAS}
+        modalidadEditable={modalidadEditable}
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+        isSubmitting={false}
+      />,
+    );
+    return { onSubmit };
+  }
+
+  it("editable: precarga la vigente y manda la elegida", async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderModalidad(true);
+
+    expect(screen.getByLabelText("Modalidad")).toHaveValue("INTERNA");
+    expect(screen.getByLabelText("Modalidad")).toBeEnabled();
+    await user.selectOptions(screen.getByLabelText("Modalidad"), "EXTERNA");
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ modalidad: "EXTERNA" });
+  });
+
+  it.each([
+    ["no editable", false],
+    ["sin el dato del backend", undefined],
+  ])("%s: el control queda deshabilitado con el motivo y la modalidad no viaja", async (_caso, editable) => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderModalidad(editable);
+
+    const select = screen.getByLabelText("Modalidad");
+    expect(select).toBeDisabled();
+    expect(select).toHaveAccessibleDescription(
+      "La modalidad solo se puede cambiar mientras el ticket no tenga tareas ni compras vinculadas.",
+    );
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty("modalidad");
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ titulo: "Impresora rota" });
+  });
+});

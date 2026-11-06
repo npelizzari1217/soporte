@@ -80,6 +80,8 @@ export interface ItemCompra {
    * declara insumo o el dato no se resolvió.
    */
   insumoSeguimiento: SeguimientoInsumo | null;
+  /** `true` si el ítem contrata un servicio: sin insumo y sin stock (odd/edilicia-obra-externa, S2). */
+  esServicio: boolean;
   cantidad: number;
   proveedor: string;
   monto: number;
@@ -225,6 +227,8 @@ export interface AgregarItemCompraDto {
   descripcion: string;
   /** Insumo del catálogo, ausente o `null` si el ítem es de texto libre. */
   insumoId?: string | null;
+  /** Ausente = `false`. Un servicio no declara insumo. */
+  esServicio?: boolean;
   cantidad: number;
   proveedor: string;
   monto: number;
@@ -245,6 +249,8 @@ export interface EditarItemCompraDto {
    * El backend rechaza el cambio con 422 en cuanto el ítem recibió mercadería.
    */
   insumoId?: string | null;
+  /** Ausente no toca; el backend lo congela con el ítem decidido. */
+  esServicio?: boolean;
   cantidad?: number;
   proveedor?: string;
   monto?: number;

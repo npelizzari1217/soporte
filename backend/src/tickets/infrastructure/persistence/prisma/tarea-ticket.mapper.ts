@@ -16,6 +16,7 @@ export class TareaTicketMapper {
         completada: row.completada,
         completadaEn: row.completadaEn,
         completadaPorId: row.completadaPorId,
+        peso: row.peso,
       },
       row.id,
       row.createdAt,
@@ -35,6 +36,7 @@ export class TareaTicketMapper {
       completada: entity.completada,
       completadaEn: entity.completadaEn,
       completadaPorId: entity.completadaPorId,
+      peso: entity.peso,
       createdAt: entity.createdAt,
       deletedAt: entity.deletedAt,
     };

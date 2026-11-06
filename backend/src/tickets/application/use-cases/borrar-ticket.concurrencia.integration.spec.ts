@@ -77,6 +77,8 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
   const siempreEditable = {
     verificar: async () => Result.ok(undefined),
     verificarEstado: async () => Result.ok(undefined),
+    // Los tickets de este spec son INTERNA: la regla de L36 (odd/edilicia-obra-externa) no aplica.
+    verificarAltaDeTarea: async () => Result.ok(undefined),
   };
   const sinAvanceDeEstado = { aplicar: async () => null };
   let tipoId: string;
@@ -204,6 +206,7 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
         return Result.ok(undefined);
       },
       verificarEstado: async () => Result.ok(undefined),
+      verificarAltaDeTarea: async () => Result.ok(undefined),
     };
 
     const result = await enTenant(() =>

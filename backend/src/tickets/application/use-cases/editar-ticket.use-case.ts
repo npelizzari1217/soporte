@@ -1,9 +1,10 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
-import { TicketEntity } from '../../domain/entities/ticket.entity';
+import { ModalidadTicket, TicketEntity } from '../../domain/entities/ticket.entity';
 import { TicketReprioritizadoEvent } from '../../domain/events/ticket-reprioritizado.event';
 import {
+  ModalidadNoEditableError,
   PrioridadNoEncontradaError,
   SectorTicketInexistenteError,
   TicketBloqueadoParaEdicionError,
@@ -12,9 +13,12 @@ import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repos
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
+import { IBloqueoTicketRepository } from '../../domain/ports/i-bloqueo-ticket.repository';
 import { ESTADOS_PRE_PROCESO } from '../../domain/state-machine/estados.constants';
 import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
 import { esAlcanceDeAdministrador, verificarTicketModificable } from '../services/solo-comentarios';
+import { ConsultaModalidadEditable } from '../services/modalidad-editable';
 
 /**
  * DTO de entrada de `EditarTicketUseCase` (T8 — PATCH semántico).
@@ -36,6 +40,8 @@ export interface EditarTicketDto extends AlcanceActorTicket {
   ubicacion?: string | null;
   /** Sector del cliente (odd/ubicacion-sector-ticket). `null` limpia; ausente no toca. */
   sectorId?: string | null;
+  /** Modalidad de ejecución (odd/edilicia-obra-externa S1). Ausente no toca. */
+  modalidad?: ModalidadTicket;
   /**
    * `true` si el actor es ROOT (`is_global_admin`). ROOT edita SIEMPRE,
    * incluso con el ticket EN_PROCESO o posterior. El resto solo puede editar
@@ -81,6 +87,8 @@ export class EditarTicketUseCase {
     private readonly eventPublisher: IDomainEventPublisher,
     private readonly sectorRepo: Pick<ISectorRepository, 'findById'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
+    private readonly tareaRepo: Pick<ITareaTicketRepository, 'listarPorTicket'>,
+    private readonly bloqueoRepo: Pick<IBloqueoTicketRepository, 'comprasVinculadas'>,
   ) {}
 
   async execute(dto: EditarTicketDto): Promise<Result<TicketEntity, DomainError>> {
@@ -160,12 +168,22 @@ export class EditarTicketUseCase {
     // caller reenvía la misma prioridadId (sin cambio efectivo).
     const cambioPrioridad = dto.prioridadId !== undefined && dto.prioridadId !== ticket.prioridadId;
 
+    // odd/edilicia-obra-externa (S1): la modalidad solo cambia sin tareas ni compras. Reenviar la
+    // misma no es un cambio y no se valida. ROOT tampoco la salta: es coherencia de datos, no permiso.
+    if (dto.modalidad !== undefined && dto.modalidad !== ticket.modalidad) {
+      const consulta = new ConsultaModalidadEditable(this.tareaRepo, this.bloqueoRepo);
+      if (!(await consulta.esEditable(ticket.id))) {
+        return Result.fail(new ModalidadNoEditableError());
+      }
+    }
+
     ticket.actualizarDatos({
       titulo: dto.titulo,
       descripcion: dto.descripcion,
       prioridadId: dto.prioridadId,
       ubicacion: dto.ubicacion,
       sectorId: dto.sectorId,
+      modalidad: dto.modalidad,
     });
 
     await this.ticketRepo.save(ticket);

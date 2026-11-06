@@ -287,6 +287,22 @@ describe('ListarReparacionesUseCase — hidratación por lote (el listado NO pue
     expect(items[1].comprasQueBloquean).toEqual([]);
   });
 
+  it('en un ticket EXTERNA el avance pondera por peso (odd/edilicia-obra-externa, S3)', async () => {
+    const { useCase, tareaRepo, tickets } = armar(1);
+    tickets[0].actualizarDatos({ modalidad: 'EXTERNA' });
+    const hecha = makeTarea('t-0', 'Losa');
+    hecha.asignarPeso(30, new Date('2026-10-13T10:00:00Z'));
+    hecha.completar('tecnico-uuid', new Date('2026-10-13T10:00:00Z'));
+    const pendiente = makeTarea('t-0', 'Revoque');
+    pendiente.asignarPeso(50, new Date('2026-10-13T10:00:00Z'));
+    tareaRepo.listarPorTickets.mockResolvedValue(new Map([['t-0', [hecha, pendiente]]]));
+
+    const items = (await useCase.execute(SIN_RESTRICCION)).getValue();
+
+    // Con la fórmula INTERNA daría 50.
+    expect(items[0].porcentajeAvance).toBe(30);
+  });
+
   it('arma cada item con sus tareas y avance, en el orden de findAll; sin tareas, []', async () => {
     const { useCase, tareaRepo } = armar(2);
     const hecha = makeTarea('t-0', 'Cambiar la junta');
@@ -300,6 +316,35 @@ describe('ListarReparacionesUseCase — hidratación por lote (el listado NO pue
     expect(items[0].subtareas).toEqual([hecha, pendiente]);
     expect(items.map((item) => item.porcentajeAvance)).toEqual([50, 0]);
     expect(items[1].subtareas).toEqual([]);
+  });
+});
+
+describe('ListarReparacionesUseCase — modalidadEditable (odd/edilicia-obra-externa, S1)', () => {
+  // La compra completada no bloquea, pero sí cuenta: la regla es "sin compras vinculadas".
+  const completada: CompraVinculada = {
+    ...compraActiva,
+    compraId: 'compra-completa',
+    items: [{ estadoAprobacion: 'APROBADO', comprado: true, entregado: true, esServicio: false }],
+  };
+
+  it('es false con una tarea activa o con una compra vinculada que no bloquea; true sin ninguna', async () => {
+    const { useCase, tareaRepo, reparacionCompraRepo } = armar(4);
+    const borrada = makeTarea('t-3', 'Tarea borrada');
+    borrada.softDelete();
+    tareaRepo.listarPorTickets.mockResolvedValue(
+      new Map([
+        ['t-0', [makeTarea('t-0', 'Pintar')]],
+        ['t-3', [borrada]],
+      ]),
+    );
+    reparacionCompraRepo.findComprasVinculadasByTicketIds.mockResolvedValue(
+      new Map([['t-1', [completada]]]),
+    );
+
+    const items = (await useCase.execute(SIN_RESTRICCION)).getValue();
+
+    expect(items.map((item) => item.modalidadEditable)).toEqual([false, false, true, true]);
+    expect(items[1].bloqueada).toBe(false);
   });
 });
 

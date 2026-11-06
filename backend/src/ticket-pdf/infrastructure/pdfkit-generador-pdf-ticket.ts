@@ -1,6 +1,8 @@
 import PDFDocument from 'pdfkit';
 import { IGeneradorPdfTicket } from '../domain/ports/i-generador-pdf-ticket';
-import { TicketPdfVista } from '../domain/ticket-pdf-vista';
+import { IGeneradorPdfCertificado } from '../domain/ports/i-generador-pdf-certificado';
+import { CertificadoPdfVista } from '../domain/certificado-pdf-vista';
+import { LogoPdf, TicketPdfVista } from '../domain/ticket-pdf-vista';
 
 const MARGEN = 50;
 const ANCHO_ETIQUETA = 120;
@@ -8,6 +10,7 @@ const COLOR_TEXTO = '#1f2933';
 const COLOR_SUAVE = '#6b7280';
 const COLOR_LINEA = '#d1d5db';
 const ALTO_PIE = 40;
+const COLOR_ANULADO = '#b91c1c';
 
 export interface OpcionesPdfkit {
   /**
@@ -25,17 +28,41 @@ export interface OpcionesPdfkit {
  * A4, Helvetica (fuente estándar del PDF: cubre el español sin embeber
  * fuentes), pie con fecha de generación y "Página X de Y".
  */
-export class PdfkitGeneradorPdfTicket implements IGeneradorPdfTicket {
+export class PdfkitGeneradorPdfTicket implements IGeneradorPdfTicket, IGeneradorPdfCertificado {
   constructor(private readonly opciones: OpcionesPdfkit = {}) {}
 
   generar(vista: TicketPdfVista): Promise<Buffer> {
+    return this.documento({ Title: `Ticket ${vista.numero}`, Subject: vista.titulo }, (doc) =>
+      this.dibujar(doc, vista),
+    );
+  }
+
+  /**
+   * PDF de un certificado de avance (odd/edilicia-obra-externa, S7). Un certificado anulado lleva
+   * la marca ANULADO y su motivo arriba de todo, para que nadie lo pague por error.
+   */
+  generarCertificado(vista: CertificadoPdfVista): Promise<Buffer> {
+    return this.documento(
+      {
+        Title: `Certificado N.º ${vista.numero} — ${vista.ticket.numero}`,
+        Subject: vista.ticket.titulo,
+      },
+      (doc) => this.dibujarCertificado(doc, vista),
+    );
+  }
+
+  /** A4 con páginas en buffer (para el pie); `dibujar` llena el documento. */
+  private documento(
+    info: PDFKit.DocumentInfo,
+    dibujar: (doc: PDFKit.PDFDocument) => void,
+  ): Promise<Buffer> {
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({
         size: 'A4',
         margin: MARGEN,
         bufferPages: true,
         compress: this.opciones.compress ?? true,
-        info: { Title: `Ticket ${vista.numero}`, Subject: vista.titulo },
+        info,
       });
       const partes: Buffer[] = [];
       doc.on('data', (parte: Buffer) => partes.push(parte));
@@ -43,7 +70,7 @@ export class PdfkitGeneradorPdfTicket implements IGeneradorPdfTicket {
       doc.on('error', reject);
 
       try {
-        this.dibujar(doc, vista);
+        dibujar(doc);
         doc.end();
       } catch (error) {
         reject(error instanceof Error ? error : new Error(String(error)));
@@ -51,10 +78,47 @@ export class PdfkitGeneradorPdfTicket implements IGeneradorPdfTicket {
     });
   }
 
+  private dibujarCertificado(doc: PDFKit.PDFDocument, vista: CertificadoPdfVista): void {
+    const ancho = doc.page.width - MARGEN * 2;
+    this.encabezado(doc, vista.cliente, ancho);
+
+    doc.moveDown(0.8);
+    doc.font('Helvetica-Bold').fontSize(15).fillColor(COLOR_TEXTO);
+    doc.text(`Certificado de avance de obra N.º ${vista.numero}`, MARGEN, doc.y, { width: ancho });
+    doc.moveDown(0.4);
+
+    if (vista.anulacion) {
+      doc.font('Helvetica-Bold').fontSize(13).fillColor(COLOR_ANULADO);
+      doc.text('ANULADO — no corresponde pagar este certificado', MARGEN, doc.y, { width: ancho });
+      doc.font('Helvetica').fontSize(10);
+      doc.text(
+        `Anulado el ${vista.anulacion.en} por ${vista.anulacion.por}. Motivo: ${vista.anulacion.motivo}`,
+        MARGEN,
+        doc.y + 2,
+        { width: ancho },
+      );
+      doc.moveDown(0.6);
+    }
+
+    this.fila(doc, 'Ticket', `${vista.ticket.numero} — ${vista.ticket.titulo}`);
+    this.fila(doc, 'Tipo', vista.ticket.tipo);
+    if (vista.ticket.ubicacion) this.fila(doc, 'Ubicación', vista.ticket.ubicacion);
+    this.fila(doc, 'Emitido', `${vista.emitidoEn} por ${vista.emitidoPor}`);
+    this.fila(doc, 'Avance certificado', `${vista.porcentaje} %`);
+    this.fila(doc, 'Acumulado vigente', `${vista.acumuladoVigente} % del ticket`);
+
+    this.seccion(doc, 'Tareas certificadas');
+    for (const tarea of vista.tareas) {
+      this.fila(doc, `${tarea.peso} %`, tarea.descripcion);
+    }
+
+    this.pie(doc, vista);
+  }
+
   private dibujar(doc: PDFKit.PDFDocument, vista: TicketPdfVista): void {
     const ancho = doc.page.width - MARGEN * 2;
 
-    this.encabezado(doc, vista, ancho);
+    this.encabezado(doc, vista.cliente, ancho);
 
     doc.moveDown(0.8);
     doc.font('Helvetica-Bold').fontSize(15).fillColor(COLOR_TEXTO);
@@ -128,8 +192,12 @@ export class PdfkitGeneradorPdfTicket implements IGeneradorPdfTicket {
     this.pie(doc, vista);
   }
 
-  private encabezado(doc: PDFKit.PDFDocument, vista: TicketPdfVista, ancho: number): void {
-    const { logo, nombre } = vista.cliente;
+  private encabezado(
+    doc: PDFKit.PDFDocument,
+    cliente: { nombre: string; logo: LogoPdf | null },
+    ancho: number,
+  ): void {
+    const { logo, nombre } = cliente;
     const yInicio = doc.y;
     let dibujado = false;
     if (logo) {
@@ -190,7 +258,7 @@ export class PdfkitGeneradorPdfTicket implements IGeneradorPdfTicket {
   }
 
   /** Pie en TODAS las páginas: fecha de generación y "Página X de Y". */
-  private pie(doc: PDFKit.PDFDocument, vista: TicketPdfVista): void {
+  private pie(doc: PDFKit.PDFDocument, vista: { generadoEl: string }): void {
     const rango = doc.bufferedPageRange();
     for (let i = 0; i < rango.count; i += 1) {
       doc.switchToPage(rango.start + i);

@@ -44,6 +44,7 @@ function makeFakeRow(overrides: Partial<PrismaTicket> = {}): PrismaTicket {
     ubicacion: null,
     sectorId: null,
     fechaObjetivo: null,
+    modalidad: 'INTERNA',
     recordatorioEnviadoAt: null,
     createdAt: new Date('2026-01-10T10:00:00.000Z'),
     updatedAt: new Date('2026-01-10T10:00:00.000Z'),

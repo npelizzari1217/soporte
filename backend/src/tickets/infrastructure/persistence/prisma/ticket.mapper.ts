@@ -7,7 +7,13 @@
  * Tarea: T5.1
  */
 import type { Ticket as PrismaTicket } from '.prisma/tenant';
-import { SLA_REGLAS, SlaRegla, TicketEntity } from '../../../domain/entities/ticket.entity';
+import {
+  MODALIDADES_TICKET,
+  ModalidadTicket,
+  SLA_REGLAS,
+  SlaRegla,
+  TicketEntity,
+} from '../../../domain/entities/ticket.entity';
 
 /**
  * Valida y angosta el `string` crudo de la columna `sla_regla` (CHECK
@@ -22,6 +28,17 @@ function parseSlaRegla(value: string): SlaRegla {
     return value as SlaRegla;
   }
   throw new Error(`TicketMapper: sla_regla con valor inesperado en la fila: "${value}".`);
+}
+
+/**
+ * Valida y angosta la columna `modalidad` (CHECK `tickets_modalidad_check`). Mismo criterio que
+ * `parseSlaRegla`: un valor fuera del catálogo es un dato corrupto y lanza.
+ */
+function parseModalidad(value: string): ModalidadTicket {
+  if ((MODALIDADES_TICKET as readonly string[]).includes(value)) {
+    return value as ModalidadTicket;
+  }
+  throw new Error(`TicketMapper: modalidad con valor inesperado en la fila: "${value}".`);
 }
 
 /**
@@ -73,6 +90,7 @@ export class TicketMapper {
         ubicacion: row.ubicacion ?? null,
         sectorId: row.sectorId ?? null,
         fechaObjetivo: row.fechaObjetivo ?? null,
+        modalidad: parseModalidad(row.modalidad),
       },
       row.id,
       row.createdAt,
@@ -128,6 +146,7 @@ export class TicketMapper {
       ubicacion: entity.ubicacion,
       sectorId: entity.sectorId,
       fechaObjetivo: entity.fechaObjetivo,
+      modalidad: entity.modalidad,
       deletedAt: entity.deletedAt,
       createdAt: entity.createdAt,
     };

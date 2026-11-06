@@ -11,6 +11,8 @@ import { UBICACION_MAX_LENGTH } from "./limites";
 const REPARACION_VALIDA = {
   titulo: "Filtración en el baño",
   prioridadId: "9f1a0b2c-3d4e-4f50-8a61-72b83c94d5e6",
+  // El formulario la precarga en INTERNA, así que una reparación válida siempre la trae.
+  modalidad: "INTERNA",
 };
 
 const largo = (n: number) => "a".repeat(n);
@@ -44,4 +46,15 @@ describe("crearReparacionSchema — tope de ubicacion", () => {
  */
 it("el tope coincide con el ancho de la columna", () => {
   expect(UBICACION_MAX_LENGTH).toBe(255);
+});
+
+describe("crearReparacionSchema — modalidad (odd/edilicia-obra-externa, S1)", () => {
+  it("acepta INTERNA y EXTERNA", () => {
+    expect(crearReparacionSchema.safeParse({ ...REPARACION_VALIDA, modalidad: "EXTERNA" }).success).toBe(true);
+    expect(crearReparacionSchema.safeParse(REPARACION_VALIDA).success).toBe(true);
+  });
+
+  it("rechaza un valor fuera del catálogo del backend", () => {
+    expect(crearReparacionSchema.safeParse({ ...REPARACION_VALIDA, modalidad: "MIXTA" }).success).toBe(false);
+  });
 });

@@ -110,6 +110,7 @@ function mockBackend() {
             completadaPorId: null,
             completadaPorNombre: null,
             completadaPorApellido: null,
+            peso: 25,
             createdAt: "2026-01-01T00:00:00.000Z",
           },
         ],
@@ -131,6 +132,18 @@ describe("TicketDetailView — sección Tareas (odd/tareas-con-tecnico, T6)", ()
     expect(await screen.findByRole("heading", { name: "Tareas" })).toBeInTheDocument();
     expect(await screen.findByText("Cambiar el tóner")).toBeInTheDocument();
     expect(screen.getByText("0% · 0 de 1 completadas")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["EXTERNA", true],
+    ["INTERNA", false],
+  ] as const)("pasa la modalidad %s del ticket a las tareas: muestra el peso = %s", async (modalidad, conPeso) => {
+    server.use(http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, modalidad })));
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: [] }) });
+
+    await screen.findByText("Cambiar el tóner");
+    if (conPeso) expect(screen.getByText(/Pesos asignados: 25 % de 100 %/)).toBeInTheDocument();
+    else expect(screen.queryByText(/Pesos asignados/)).not.toBeInTheDocument();
   });
 });
 
@@ -273,6 +286,32 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
     await waitFor(() => expect(capturedBody).toMatchObject({ titulo: "Impresora arreglada" }));
     await waitFor(() => expect(screen.queryByLabelText("Título")).not.toBeInTheDocument());
   });
+
+  it.each([
+    [true, "habilitada"],
+    [false, "deshabilitada"],
+  ])(
+    "con modalidadEditable=%s del backend, la modalidad del modal queda %s (odd/edilicia-obra-externa, S1)",
+    async (editable) => {
+      server.use(
+        http.get(`/api/tickets/${TICKET_ID}`, () =>
+          HttpResponse.json({ ...TICKET, modalidad: "EXTERNA", modalidadEditable: editable }),
+        ),
+      );
+      const user = userEvent.setup();
+      renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+        user: buildUser({ permisos: ["TICKETS:MODIFICACION"] }),
+      });
+
+      await screen.findByText("Impresora rota");
+      await user.click(screen.getByRole("button", { name: /^editar$/i }));
+      const select = await screen.findByLabelText("Modalidad");
+
+      expect(select).toHaveValue("EXTERNA");
+      if (editable) expect(select).toBeEnabled();
+      else expect(select).toBeDisabled();
+    },
+  );
 
   it("control unificado → PATCH /tickets/:id/asignar-en-proceso con el técnico elegido", async () => {
     let capturedBody: unknown = null;
@@ -1090,3 +1129,81 @@ describe("TicketDetailView — compras vinculadas y bloqueo (odd/ticket-unificad
     expect(screen.getAllByText("Bloqueado por una compra en curso")).toHaveLength(1);
   });
 });
+
+describe("TicketDetailView — certificados de avance (odd/edilicia-obra-externa, T4)", () => {
+  beforeEach(() => {
+    mockBackend();
+    server.use(http.get(`/api/tickets/${TICKET_ID}/certificados`, () => HttpResponse.json([])));
+  });
+
+  it.each([
+    ["EXTERNA", true],
+    ["INTERNA", false],
+  ] as const)("con modalidad %s la sección se muestra: %s", async (modalidad, visible) => {
+    server.use(http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, modalidad })));
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1() });
+
+    await screen.findByText("Cambiar el tóner");
+    if (visible) expect(await screen.findByRole("heading", { name: "Certificados de avance" })).toBeInTheDocument();
+    else expect(screen.queryByRole("heading", { name: "Certificados de avance" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["con", true],
+    ["sin", false],
+  ] as const)("%s CERTIFICAR sobre el tipo se ofrece emitir: %s", async (_caso, conPermiso) => {
+    server.use(http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, modalidad: "EXTERNA" })));
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: TECNICO,
+      permisos: conPermiso ? enTi1("CERTIFICAR") : enTi1(),
+    });
+
+    await screen.findByRole("heading", { name: "Certificados de avance" });
+    await screen.findByText("Sin certificados todavía.");
+    if (conPermiso) expect(screen.getByRole("heading", { name: "Emitir certificado" })).toBeInTheDocument();
+    else expect(screen.queryByRole("heading", { name: "Emitir certificado" })).not.toBeInTheDocument();
+  });
+});
+
+describe("TicketDetailView — PDF del certificado (odd/edilicia-obra-externa, S7)", () => {
+  beforeEach(() => {
+    mockBackend();
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, modalidad: "EXTERNA" })),
+      http.get(`/api/tickets/${TICKET_ID}/certificados`, () =>
+        HttpResponse.json([
+          {
+            id: "c1",
+            ticketId: TICKET_ID,
+            numero: 1,
+            porcentaje: 25,
+            vigente: true,
+            emitidoPorId: "u-cert",
+            emitidoPorNombre: "Carla",
+            emitidoPorApellido: "Gómez",
+            emitidoEn: "2026-11-02T13:00:00.000Z",
+            anuladoEn: null,
+            anuladoPorId: null,
+            anuladoPorNombre: null,
+            anuladoPorApellido: null,
+            motivoAnulacion: null,
+            tareas: [{ tareaId: "ta1", descripcion: "Cambiar el tóner", peso: 25 }],
+          },
+        ]),
+      ),
+    );
+  });
+
+  it.each([
+    ["IMPRESION", ["IMPRESION"] as AccionTipoTicket[], true],
+    ["CERTIFICAR sin IMPRESION", ["CERTIFICAR"] as AccionTipoTicket[], false],
+  ])("con %s el certificado ofrece su PDF: %s", async (_caso, acciones, ofrece) => {
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1(...acciones) });
+
+    await screen.findByText("Certificado N.º 1 · 25 %");
+    const boton = screen.queryByRole("button", { name: "Descargar PDF del certificado N.º 1" });
+    if (ofrece) expect(boton).toBeInTheDocument();
+    else expect(boton).not.toBeInTheDocument();
+  });
+});
+

@@ -112,9 +112,11 @@ import { ListarTiposOperacionUseCase } from './application/use-cases/listar-tipo
 import { ExportarTicketsUseCase } from './application/use-cases/exportar-tickets.use-case';
 import { CrearTareaTicketUseCase } from './application/use-cases/crear-tarea-ticket.use-case';
 import { AsignarTecnicoTareaUseCase } from './application/use-cases/asignar-tecnico-tarea.use-case';
+import { AsignarPesoTareaUseCase } from './application/use-cases/asignar-peso-tarea.use-case';
 import { CompletarTareaUseCase } from './application/use-cases/completar-tarea.use-case';
 import { AvanzarEstadoPorTareasService } from './application/services/avanzar-estado-por-tareas.service';
 import { VerificadorTicketEditable } from './application/services/ticket-editable-para-tareas';
+import { ConsultaModalidadEditable } from './application/services/modalidad-editable';
 import { DescompletarTareaUseCase } from './application/use-cases/descompletar-tarea.use-case';
 import { EliminarTareaUseCase } from './application/use-cases/eliminar-tarea.use-case';
 import { ListarTareasTicketUseCase } from './application/use-cases/listar-tareas-ticket.use-case';
@@ -123,6 +125,16 @@ import { TicketsController } from './interface/controllers/tickets.controller';
 import { AdjuntosController } from './interface/controllers/adjuntos.controller';
 import { CatalogosController } from './interface/controllers/catalogos.controller';
 import { TareasTicketController } from './interface/controllers/tareas-ticket.controller';
+import { CertificadosController } from './interface/controllers/certificados.controller';
+import { PrismaCertificadoAvanceRepository } from './infrastructure/persistence/prisma/prisma-certificado-avance.repository';
+import {
+  CERTIFICADO_AVANCE_REPOSITORY,
+  ICertificadoAvanceRepository,
+} from './domain/ports/i-certificado-avance.repository';
+import { ListarCertificadosUseCase } from './application/use-cases/listar-certificados.use-case';
+import { ConsultaCierreExterno } from './application/services/cierre-externo';
+import { EmitirCertificadoUseCase } from './application/use-cases/emitir-certificado.use-case';
+import { AnularCertificadoUseCase } from './application/use-cases/anular-certificado.use-case';
 import { CalendarioLaboralModule } from '../calendario-laboral/calendario-laboral.module';
 import { CalcularSlaHabilVenceService } from '../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
 import {
@@ -227,9 +239,86 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
     CatalogosController,
     TareasTicketController,
     TramosTecnicoTicketController,
+    CertificadosController,
   ],
   providers: [
     { provide: USUARIO_MASTER_CHECKER, useClass: UsuarioMasterChecker },
+    // odd/edilicia-obra-externa T3b: certificados de avance de obra.
+    { provide: CERTIFICADO_AVANCE_REPOSITORY, useClass: PrismaCertificadoAvanceRepository },
+    {
+      // S10: un ticket EXTERNA no se cierra con tareas sin certificar.
+      provide: ConsultaCierreExterno,
+      useFactory: (
+        tareaRepo: ITareaTicketRepository,
+        certificadoRepo: ICertificadoAvanceRepository,
+      ): ConsultaCierreExterno => new ConsultaCierreExterno(tareaRepo, certificadoRepo),
+      inject: [TAREA_TICKET_REPOSITORY, CERTIFICADO_AVANCE_REPOSITORY],
+    },
+    {
+      provide: ListarCertificadosUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        certificadoRepo: ICertificadoAvanceRepository,
+      ): ListarCertificadosUseCase => new ListarCertificadosUseCase(ticketRepo, certificadoRepo),
+      inject: [TICKET_REPOSITORY, CERTIFICADO_AVANCE_REPOSITORY],
+    },
+    {
+      provide: EmitirCertificadoUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tareaRepo: ITareaTicketRepository,
+        certificadoRepo: ICertificadoAvanceRepository,
+        estadoRepo: IEstadoRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoOperacionRepo: ITipoOperacionRepository,
+        txRunner: ITenantTransactionRunner,
+      ): EmitirCertificadoUseCase =>
+        new EmitirCertificadoUseCase(
+          ticketRepo,
+          tareaRepo,
+          certificadoRepo,
+          estadoRepo,
+          operacionRepo,
+          tipoOperacionRepo,
+          txRunner,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
+        CERTIFICADO_AVANCE_REPOSITORY,
+        ESTADO_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        TENANT_TX_RUNNER,
+      ],
+    },
+    {
+      provide: AnularCertificadoUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        certificadoRepo: ICertificadoAvanceRepository,
+        estadoRepo: IEstadoRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoOperacionRepo: ITipoOperacionRepository,
+        txRunner: ITenantTransactionRunner,
+      ): AnularCertificadoUseCase =>
+        new AnularCertificadoUseCase(
+          ticketRepo,
+          certificadoRepo,
+          estadoRepo,
+          operacionRepo,
+          tipoOperacionRepo,
+          txRunner,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        CERTIFICADO_AVANCE_REPOSITORY,
+        ESTADO_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        TENANT_TX_RUNNER,
+      ],
+    },
     { provide: ESTADO_REPOSITORY, useClass: PrismaEstadoRepository },
     { provide: PRIORIDAD_REPOSITORY, useClass: PrismaPrioridadRepository },
     { provide: TIPO_TICKET_REPOSITORY, useClass: PrismaTipoTicketRepository },
@@ -273,6 +362,14 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
     { provide: TAREA_TICKET_REPOSITORY, useClass: PrismaTareaTicketRepository },
     // odd/ticket-cerrado-solo-lectura: tareas de solo lectura en CERRADO/CANCELADO o bloqueada por compra.
     { provide: BLOQUEO_TICKET_REPOSITORY, useClass: PrismaBloqueoTicketRepository },
+    {
+      provide: ConsultaModalidadEditable,
+      useFactory: (
+        tareaRepo: ITareaTicketRepository,
+        bloqueoRepo: IBloqueoTicketRepository,
+      ): ConsultaModalidadEditable => new ConsultaModalidadEditable(tareaRepo, bloqueoRepo),
+      inject: [TAREA_TICKET_REPOSITORY, BLOQUEO_TICKET_REPOSITORY],
+    },
     {
       provide: VerificadorTicketEditable,
       useFactory: (estadoRepo: IEstadoRepository, bloqueoRepo: IBloqueoTicketRepository) =>
@@ -442,6 +539,8 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
         eventPublisher: IDomainEventPublisher,
         sectorRepo: ISectorRepository,
         txRunner: ITenantTransactionRunner,
+        tareaRepo: ITareaTicketRepository,
+        bloqueoRepo: IBloqueoTicketRepository,
       ) =>
         new EditarTicketUseCase(
           ticketRepo,
@@ -450,6 +549,8 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
           eventPublisher,
           sectorRepo,
           txRunner,
+          tareaRepo,
+          bloqueoRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -458,6 +559,8 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
         DOMAIN_EVENT_PUBLISHER,
         SECTOR_REPOSITORY,
         TENANT_TX_RUNNER,
+        TAREA_TICKET_REPOSITORY,
+        BLOQUEO_TICKET_REPOSITORY,
       ],
     },
     {
@@ -476,6 +579,7 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
         eventPublisher: IDomainEventPublisher,
         txRunner: ITenantTransactionRunner,
         relojMarcador: IRelojSlaMarcador,
+        cierreExterno: ConsultaCierreExterno,
       ) =>
         new TransicionarEstadoUseCase(
           ticketRepo,
@@ -487,6 +591,7 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
           eventPublisher,
           txRunner,
           relojMarcador,
+          cierreExterno,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -498,6 +603,7 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
         DOMAIN_EVENT_PUBLISHER,
         TENANT_TX_RUNNER,
         RELOJ_SLA_MARCADOR,
+        ConsultaCierreExterno,
       ],
     },
     {
@@ -639,6 +745,31 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
         ElegibilidadAsignado,
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
+        TENANT_TX_RUNNER,
+        VerificadorTicketEditable,
+      ],
+    },
+    {
+      // odd/edilicia-obra-externa (S4, S9): peso de una tarea de un ticket EXTERNA.
+      provide: AsignarPesoTareaUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+        tareaRepo: ITareaTicketRepository,
+        txRunner: ITenantTransactionRunner,
+        verificadorEditable: VerificadorTicketEditable,
+      ): AsignarPesoTareaUseCase =>
+        new AsignarPesoTareaUseCase(
+          ticketRepo,
+          tipoTicketRepo,
+          tareaRepo,
+          txRunner,
+          verificadorEditable,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
         TENANT_TX_RUNNER,
         VerificadorTicketEditable,
       ],
@@ -1009,6 +1140,8 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
     // odd/tareas-con-tecnico: las tareas las leen también el listado de reparaciones, el dashboard
     // y el PDF, que viven en otros módulos.
     TAREA_TICKET_REPOSITORY,
+    // odd/edilicia-obra-externa (S7): el PDF del certificado vive en TicketPdfModule.
+    CERTIFICADO_AVANCE_REPOSITORY,
     // odd/tareas-con-tecnico T3: las rutas de subtareas de reparaciones delegan en estos tres hasta
     // que T8 las retire.
     CrearTareaTicketUseCase,

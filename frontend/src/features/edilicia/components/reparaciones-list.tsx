@@ -242,6 +242,7 @@ export function ReparacionesList() {
           numero={row.numero}
           estadoCodigo={estadoCodigoMap.get(row.estadoId)}
           bloqueada={row.bloqueada}
+          modalidad={row.modalidad}
           // `subtareas` trae embebidas las tareas ACTIVAS del ticket: las mismas
           // que lista el diálogo y sobre las que se calcula el avance (CA5).
           trigger={

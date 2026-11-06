@@ -35,6 +35,7 @@ export class ItemCompraMapper {
         compraId: row.compraId,
         descripcion: row.descripcion,
         insumoId: row.insumoId ?? null,
+        esServicio: row.esServicio,
         cantidad: Number(row.cantidad),
         proveedor: row.proveedor,
         monto: Number(row.monto),
@@ -93,6 +94,7 @@ export class ItemCompraMapper {
       // y mismo defecto evitado que `modeloEquipoId` en
       // `equipo-informatico.mapper.ts`.
       insumoId: entity.insumoId,
+      esServicio: entity.esServicio,
       cantidad: entity.cantidad,
       proveedor: entity.proveedor,
       monto: entity.monto,

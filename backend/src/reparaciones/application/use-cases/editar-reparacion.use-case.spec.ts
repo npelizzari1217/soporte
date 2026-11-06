@@ -18,6 +18,7 @@ import {
   SectorTicketInexistenteError,
   TicketNoEncontradoError,
   TicketSoloComentariosError,
+  ModalidadNoEditableError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import {
   alcancePorTipo,
@@ -55,6 +56,8 @@ function armar(params: {
   estado?: string;
   tareas?: Array<{ completada: boolean; borrada?: boolean }>;
   bloqueada?: boolean;
+  /** Una compra vinculada cancelada: no bloquea, pero cuenta para la regla de modalidad. */
+  cancelada?: boolean;
 }) {
   const ticket = TicketEntity.create(
     {
@@ -116,7 +119,16 @@ function armar(params: {
     { listarPorTicket: async () => tareas.filter((t) => !t.isDeleted()) },
     {
       findComprasVinculadasByTicketIds: async (ids: string[]) =>
-        new Map(ids.map((id) => [id, params.bloqueada ? [compraActiva('c1')] : []])),
+        new Map(
+          ids.map((id) => [
+            id,
+            params.bloqueada
+              ? [compraActiva('c1')]
+              : params.cancelada
+                ? [{ ...compraActiva('c1'), cancelada: true }]
+                : [],
+          ]),
+        ),
     },
     { findById: async (id) => estados.get(id) ?? null },
     {
@@ -263,6 +275,45 @@ describe('EditarReparacionUseCase: regla "no se empezó a trabajar" (S5)', () =>
       expect(c.ticketRepo.save).not.toHaveBeenCalled();
     },
   );
+
+  it('sin tareas ni compras cambia la modalidad a EXTERNA (odd/edilicia-obra-externa, S1)', async () => {
+    const c = armar({});
+
+    const r = await c.useCase.execute({ ...dtoBase, modalidad: 'EXTERNA' });
+
+    expect(r.isOk()).toBe(true);
+    expect(r.getValue().ticket.modalidad).toBe('EXTERNA');
+    expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('con una tarea pendiente la modalidad no cambia, aun para ROOT, y no se guarda', async () => {
+    const c = armar({ estado: 'NUEVO', tareas: [{ completada: false }] });
+
+    const r = await c.useCase.execute({ ...dtoBase, actorEsRoot: true, modalidad: 'EXTERNA' });
+
+    expect(r.getError()).toBeInstanceOf(ModalidadNoEditableError);
+    expect(c.ticket.modalidad).toBe('INTERNA');
+    expect(c.ticketRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('con una compra cancelada vinculada (no bloquea) la modalidad no cambia, aun para ROOT', async () => {
+    const c = armar({ cancelada: true });
+
+    const r = await c.useCase.execute({ ...dtoBase, actorEsRoot: true, modalidad: 'EXTERNA' });
+
+    expect(r.getError()).toBeInstanceOf(ModalidadNoEditableError);
+    expect(c.ticket.modalidad).toBe('INTERNA');
+    expect(c.ticketRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('reenviar la misma modalidad con tareas no bloquea la edicion del resto', async () => {
+    const c = armar({ tareas: [{ completada: false }] });
+
+    const r = await c.useCase.execute({ ...dtoBase, titulo: 'Otro', modalidad: 'INTERNA' });
+
+    expect(r.isOk()).toBe(true);
+    expect(c.ticket.titulo).toBe('Otro');
+  });
 
   it('en NUEVO con una tarea completada un no ROOT recibe el motivo TAREAS_COMPLETADAS', async () => {
     const c = armar({ estado: 'NUEVO', tareas: [{ completada: true }] });

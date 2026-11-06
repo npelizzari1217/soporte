@@ -21,6 +21,8 @@ import { Select } from "@/components/ui/select";
 import { usePrioridades } from "@/features/tickets/hooks/use-catalogos";
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { useEditarReparacion } from "../hooks/use-reparacion-mutations";
+import type { ModalidadTicket } from "@/features/tickets/modalidad";
+import { CampoModalidad } from "@/features/tickets/components/campo-modalidad";
 import { editarReparacionSchema, type EditarReparacionFormValues } from "../schemas";
 import {
   puedeEditarReparacionUi,
@@ -37,6 +39,9 @@ export interface ReparacionEditDialogProps {
     prioridadId: string;
     ubicacion: string | null;
     sectorId: string | null;
+    modalidad: ModalidadTicket;
+    /** Lo decide el backend: cuenta tareas y compras que la fila no trae enteras. */
+    modalidadEditable: boolean;
   };
   /** Código del estado del ticket; `undefined` mientras el catálogo no resolvió. */
   estadoCodigo: string | undefined;
@@ -58,6 +63,7 @@ export function ReparacionEditDialog({ reparacion, estadoCodigo, esRoot, esAdmin
     prioridadId: reparacion.prioridadId,
     ubicacion: reparacion.ubicacion ?? "",
     sectorId: reparacion.sectorId ?? "",
+    modalidad: reparacion.modalidad,
   };
 
   const {
@@ -78,6 +84,9 @@ export function ReparacionEditDialog({ reparacion, estadoCodigo, esRoot, esAdmin
         prioridadId: values.prioridadId,
         ubicacion: values.ubicacion || null,
         sectorId: values.sectorId || null,
+        // Con el control deshabilitado la modalidad no viaja: ausente no toca.
+        ...(reparacion.modalidadEditable &&
+          values.modalidad !== undefined && { modalidad: values.modalidad }),
       },
       { onSuccess: () => setOpen(false) },
     );
@@ -172,6 +181,12 @@ export function ReparacionEditDialog({ reparacion, estadoCodigo, esRoot, esAdmin
                 ))}
               </Select>
             </div>
+
+            <CampoModalidad
+              id={`${idBase}-modalidad`}
+              registro={register("modalidad")}
+              editable={reparacion.modalidadEditable}
+            />
 
             <div className="flex justify-end gap-2">
               <Button type="submit" isLoading={editarMutation.isPending}>

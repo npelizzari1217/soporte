@@ -179,6 +179,10 @@ describe('TransicionarEstadoUseCase', () => {
     const relojMarcador = {
       marcar: vi.fn<IRelojSlaMarcador['marcar']>().mockResolvedValue(undefined),
     };
+    // S10 (odd/edilicia-obra-externa): por defecto, ninguna tarea sin certificar.
+    const cierreExterno = {
+      tareasSinCertificar: vi.fn(async (_ticketId: string) => 0),
+    };
 
     const useCase = new TransicionarEstadoUseCase(
       ticketRepo,
@@ -190,10 +194,12 @@ describe('TransicionarEstadoUseCase', () => {
       eventPublisher,
       txRunner,
       relojMarcador,
+      cierreExterno,
     );
 
     return {
       useCase,
+      cierreExterno,
       ticketRepo,
       operacionRepo,
       estadoRepo,
@@ -904,6 +910,89 @@ describe('TransicionarEstadoUseCase', () => {
       expect(result.isOk()).toBe(true);
       expect(c.ticketRepo.esVisiblePara).not.toHaveBeenCalled();
       expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('S10: un ticket EXTERNA no se cierra con tareas sin certificar (odd/edilicia-obra-externa)', () => {
+    function resueltoExterno(): TicketEntity {
+      const ticket = makeTicket('RESUELTO');
+      ticket.actualizarDatos({ modalidad: 'EXTERNA' });
+      return ticket;
+    }
+
+    it.each([
+      [1, 'El ticket tiene 1 tarea sin certificar: certifíquela antes de cerrarlo.'],
+      [3, 'El ticket tiene 3 tareas sin certificar: certifíquelas antes de cerrarlo.'],
+    ])(
+      'con %s sin certificar rechaza, también al ADMINISTRADOR, y no escribe',
+      async (cantidad, mensaje) => {
+        const c = makeCollaborators();
+        const ticket = resueltoExterno();
+        c.ticketRepo.findById.mockResolvedValue(ticket);
+        c.cierreExterno.tareasSinCertificar.mockResolvedValue(cantidad);
+
+        const result = await c.useCase.execute(
+          baseDto({
+            nuevoEstadoCodigo: 'CERRADO',
+            actorEsCorrector: true,
+            alcance: alcanceSinRestriccion('admin-uuid'),
+          }),
+        );
+
+        expect(result.getError().code).toBe('TICKET_EXTERNO_CON_TAREAS_SIN_CERTIFICAR');
+        expect(result.getError().message).toBe(mensaje);
+        expect(ticket.estadoId).toBe(ESTADOS.RESUELTO.id);
+        expect(c.ticketRepo.save).not.toHaveBeenCalled();
+        expect(c.operacionRepo.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('con todas certificadas cierra', async () => {
+      const c = makeCollaborators();
+      const ticket = resueltoExterno();
+      c.ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await c.useCase.execute(
+        baseDto({
+          nuevoEstadoCodigo: 'CERRADO',
+          actorEsCorrector: true,
+          alcance: alcanceSinRestriccion('admin-uuid'),
+        }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(ticket.estadoId).toBe(ESTADOS.CERRADO.id);
+      expect(c.cierreExterno.tareasSinCertificar).toHaveBeenCalledWith('ticket-uuid');
+    });
+
+    it('un ticket INTERNA cierra sin consultar certificados, aunque tenga tareas', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('RESUELTO'));
+      c.cierreExterno.tareasSinCertificar.mockResolvedValue(5);
+
+      const result = await c.useCase.execute(
+        baseDto({
+          nuevoEstadoCodigo: 'CERRADO',
+          actorEsCorrector: true,
+          alcance: alcanceSinRestriccion('admin-uuid'),
+        }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(c.cierreExterno.tareasSinCertificar).not.toHaveBeenCalled();
+    });
+
+    it('la regla es del cierre: a RESUELTO un EXTERNA llega igual con tareas sin certificar', async () => {
+      const c = makeCollaborators();
+      const ticket = makeTicket('EN_PROCESO');
+      ticket.actualizarDatos({ modalidad: 'EXTERNA' });
+      c.ticketRepo.findById.mockResolvedValue(ticket);
+      c.cierreExterno.tareasSinCertificar.mockResolvedValue(2);
+
+      const result = await c.useCase.execute(baseDto({ nuevoEstadoCodigo: 'RESUELTO' }));
+
+      expect(result.isOk()).toBe(true);
+      expect(c.cierreExterno.tareasSinCertificar).not.toHaveBeenCalled();
     });
   });
 });

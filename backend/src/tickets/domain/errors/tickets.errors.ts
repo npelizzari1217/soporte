@@ -645,3 +645,18 @@ export class ListaDeAgentesNoPermitidaError extends DomainError {
     );
   }
 }
+
+/**
+ * ModalidadNoEditableError — se pidió cambiar la modalidad de un ticket que ya tiene tareas activas
+ * o compras vinculadas (odd/edilicia-obra-externa S1, ver `modalidadEsEditable`).
+ * → HTTP 422 en la capa de presentación.
+ */
+export class ModalidadNoEditableError extends DomainError {
+  readonly code = 'MODALIDAD_NO_EDITABLE';
+
+  constructor() {
+    super(
+      'La modalidad solo se puede cambiar mientras el ticket no tenga tareas ni compras vinculadas.',
+    );
+  }
+}

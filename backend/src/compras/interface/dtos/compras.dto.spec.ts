@@ -213,6 +213,28 @@ describe('AgregarItemCompraHttpDto', () => {
     const errores = await validate(dto);
     expect(errores.some((e) => e.property === 'insumoId')).toBe(true);
   });
+
+  it('odd/edilicia-obra-externa: acepta esServicio booleano y ausente', async () => {
+    const conServicio = plainToInstance(AgregarItemCompraHttpDto, {
+      ...VALIDOS_ITEM,
+      esServicio: true,
+    });
+    const sinCampo = plainToInstance(AgregarItemCompraHttpDto, VALIDOS_ITEM);
+
+    expect(await validate(conServicio)).toHaveLength(0);
+    expect(conServicio.esServicio).toBe(true);
+    expect(await validate(sinCampo)).toHaveLength(0);
+  });
+
+  it.each([
+    ['null', null],
+    ['string', 'true'],
+  ])('odd/edilicia-obra-externa: rechaza esServicio %s', async (_desc, valor) => {
+    const dto = plainToInstance(AgregarItemCompraHttpDto, { ...VALIDOS_ITEM, esServicio: valor });
+
+    const errores = await validate(dto);
+    expect(errores.some((e) => e.property === 'esServicio')).toBe(true);
+  });
 });
 
 describe('EditarItemCompraHttpDto', () => {
@@ -263,6 +285,15 @@ describe('EditarItemCompraHttpDto', () => {
 
     const errores = await validate(dto);
     expect(errores.some((e) => e.property === 'insumoId')).toBe(true);
+  });
+
+  // `IsOptional` dejaría pasar el null y el PATCH lo confundiría con "sin cambio" (L8 del ciclo).
+  it('odd/edilicia-obra-externa: rechaza esServicio null y acepta el campo ausente', async () => {
+    const conNull = plainToInstance(EditarItemCompraHttpDto, { esServicio: null });
+    const ausente = plainToInstance(EditarItemCompraHttpDto, {});
+
+    expect((await validate(conNull)).some((e) => e.property === 'esServicio')).toBe(true);
+    expect(await validate(ausente)).toHaveLength(0);
   });
 });
 
@@ -542,6 +573,7 @@ describe('toItemCompraResponseDto', () => {
         compraId: 'compra-1',
         descripcion: 'Toner negro',
         insumoId,
+        esServicio: false,
         cantidad: 1,
         proveedor: 'Proveedor SA',
         monto: 100,
@@ -579,6 +611,10 @@ describe('toItemCompraResponseDto', () => {
   it('publica insumoId=null en el ítem histórico de texto libre, que no declara insumo', () => {
     expect(toItemCompraResponseDto(itemCon(null)).insumoId).toBeNull();
   });
+
+  it('publica esServicio del ítem (odd/edilicia-obra-externa, S2)', () => {
+    expect(toItemCompraResponseDto(itemCon(null)).esServicio).toBe(false);
+  });
 });
 
 describe('toCompraDetalleResponseDto', () => {
@@ -590,6 +626,7 @@ describe('toCompraDetalleResponseDto', () => {
         compraId: 'compra-1',
         descripcion: 'Item activo',
         insumoId: null,
+        esServicio: false,
         cantidad: 1,
         proveedor: 'Proveedor SA',
         monto: 100,
@@ -618,6 +655,7 @@ describe('toCompraDetalleResponseDto', () => {
         compraId: 'compra-1',
         descripcion: 'Item eliminado',
         insumoId: null,
+        esServicio: false,
         cantidad: 1,
         proveedor: 'Proveedor SA',
         monto: 100,

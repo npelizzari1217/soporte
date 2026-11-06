@@ -25,6 +25,7 @@ import { MontoInput } from "@/components/shared/monto-input";
 import { useInsumos } from "@/features/insumos/hooks/use-insumos";
 import { opcionesDeInsumo } from "@/features/insumos/lib/opciones-insumo";
 import { useAgregarItemCompra } from "../hooks/use-compra-mutations";
+import { CampoEsServicio } from "./campo-es-servicio";
 import { agregarItemCompraSchema, type AgregarItemCompraFormValues } from "../schemas";
 
 export interface ItemCreateDialogProps {
@@ -40,6 +41,7 @@ const EMPTY: AgregarItemCompraFormValues = {
   moneda: "ARS",
   fechaCotizacion: "",
   observaciones: "",
+  esServicio: false,
 };
 
 export function ItemCreateDialog({ compraId }: ItemCreateDialogProps) {
@@ -62,11 +64,15 @@ export function ItemCreateDialog({ compraId }: ItemCreateDialogProps) {
     control,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<AgregarItemCompraFormValues>({
     resolver: zodResolver(agregarItemCompraSchema),
     defaultValues: EMPTY,
   });
+
+  const esServicio = watch("esServicio");
 
   function submit(values: AgregarItemCompraFormValues) {
     agregarMutation.mutate(
@@ -75,7 +81,9 @@ export function ItemCreateDialog({ compraId }: ItemCreateDialogProps) {
         // "" es "sin insumo": va como clave AUSENTE, igual que `observaciones`.
         // En un POST no hay nada que "no tocar", así que ausente y `null` son lo
         // mismo para el backend y el shape queda parejo con el resto del alta.
-        insumoId: values.insumoId || undefined,
+        // Un servicio no declara insumo (odd/edilicia-obra-externa, S2).
+        insumoId: values.esServicio ? undefined : values.insumoId || undefined,
+        esServicio: values.esServicio,
         cantidad: values.cantidad,
         proveedor: values.proveedor,
         monto: values.monto,
@@ -119,11 +127,16 @@ export function ItemCreateDialog({ compraId }: ItemCreateDialogProps) {
               </p>
             )}
           </div>
+          <CampoEsServicio
+            control={control}
+            name="esServicio"
+            onMarcar={() => setValue("insumoId", "", { shouldDirty: true })}
+          />
           <div className="flex flex-col gap-1">
             <label htmlFor="item-crear-insumo" className="text-sm font-medium text-foreground">
               Insumo (opcional)
             </label>
-            <Select id="item-crear-insumo" {...register("insumoId")}>
+            <Select id="item-crear-insumo" disabled={esServicio} {...register("insumoId")}>
               <option value="">Sin insumo</option>
               {opcionesInsumo.map((opcion) => (
                 <option key={opcion.id} value={opcion.id}>
@@ -131,6 +144,11 @@ export function ItemCreateDialog({ compraId }: ItemCreateDialogProps) {
                 </option>
               ))}
             </Select>
+            {errors.insumoId && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.insumoId.message}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               Al registrar la recepción de este ítem, el stock del insumo elegido sube solo.
             </p>

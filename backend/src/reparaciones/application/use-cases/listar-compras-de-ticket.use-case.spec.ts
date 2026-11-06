@@ -19,21 +19,21 @@ const activa: CompraVinculada = {
   numero: 'COM-2026-00001',
   tipoTicketId: null,
   cancelada: false,
-  items: [{ estadoAprobacion: 'PENDIENTE', comprado: false, entregado: false }],
+  items: [{ estadoAprobacion: 'PENDIENTE', comprado: false, entregado: false, esServicio: false }],
 };
 const completada: CompraVinculada = {
   compraId: 'c-completada',
   numero: 'COM-2026-00002',
   tipoTicketId: null,
   cancelada: false,
-  items: [{ estadoAprobacion: 'APROBADO', comprado: true, entregado: true }],
+  items: [{ estadoAprobacion: 'APROBADO', comprado: true, entregado: true, esServicio: false }],
 };
 const cancelada: CompraVinculada = {
   compraId: 'c-cancelada',
   numero: 'COM-2026-00003',
   tipoTicketId: null,
   cancelada: true,
-  items: [{ estadoAprobacion: 'PENDIENTE', comprado: false, entregado: false }],
+  items: [{ estadoAprobacion: 'PENDIENTE', comprado: false, entregado: false, esServicio: false }],
 };
 
 function armar(vinculadas: CompraVinculada[]) {

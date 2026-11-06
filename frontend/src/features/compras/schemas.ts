@@ -141,6 +141,24 @@ export const editarCompraSchema = z.object({
 });
 export type EditarCompraFormValues = z.infer<typeof editarCompraSchema>;
 
+/**
+ * Espejo de `ItemServicioConInsumoError` (odd/edilicia-obra-externa, S2): un ítem de servicio no
+ * declara insumo. El formulario ya limpia el insumo al marcar el servicio; esto lo sostiene si algún
+ * camino de carga deja los dos puestos.
+ */
+function servicioSinInsumo(
+  valores: { esServicio?: boolean; insumoId?: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (valores.esServicio === true && valores.insumoId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["insumoId"],
+      message: "Un ítem de servicio no puede declarar un insumo del catálogo.",
+    });
+  }
+}
+
 /** Espejo de `AgregarItemCompraHttpDto` (§4.2, S4). */
 export const agregarItemCompraSchema = z.object({
   descripcion: z.string().min(1, "La descripción es requerida"),
@@ -176,7 +194,9 @@ export const agregarItemCompraSchema = z.object({
   moneda: z.enum(MONEDAS_ADMITIDAS, { errorMap: () => ({ message: "Elija una moneda" }) }),
   fechaCotizacion: fecha("La fecha de cotización es requerida"),
   observaciones: z.string().optional(),
-});
+  /** Espejo de `esServicio` (odd/edilicia-obra-externa, S2). */
+  esServicio: z.boolean(),
+}).superRefine(servicioSinInsumo);
 export type AgregarItemCompraFormValues = z.infer<typeof agregarItemCompraSchema>;
 
 /**
@@ -217,7 +237,8 @@ export const editarItemCompraSchema = z.object({
   moneda: z.enum(MONEDAS_ADMITIDAS, { errorMap: () => ({ message: "Elija una moneda" }) }).optional(),
   fechaCotizacion: fecha("La fecha de cotización es requerida").optional(),
   observaciones: z.string().optional(),
-});
+  esServicio: z.boolean().optional(),
+}).superRefine(servicioSinInsumo);
 export type EditarItemCompraFormValues = z.infer<typeof editarItemCompraSchema>;
 
 /** Espejo de `RegistrarOrdenDeItemHttpDto` (R1) — acumulado, no delta. `fecha` opcional. */

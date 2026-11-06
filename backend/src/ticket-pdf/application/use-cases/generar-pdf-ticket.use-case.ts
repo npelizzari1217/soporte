@@ -1,3 +1,4 @@
+import { logoParaPdf } from '../services/logo-pdf';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { diaArgentinoCsv, fechaHoraCsv } from '../../../shared/infrastructure/csv/csv';
 import { VerLogoClienteUseCase } from '../../../clientes/application/use-cases/ver-logo-cliente.use-case';
@@ -7,6 +8,7 @@ import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.reposi
 import { IPrioridadRepository } from '../../../tickets/domain/ports/i-prioridad.repository';
 import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
 import { calcularAvanceTareas } from '../../../tickets/domain/services/avance-tareas';
+import type { ModalidadTicket } from '../../../tickets/domain/entities/ticket.entity';
 import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
 import { ISolicitanteExternoRepository } from '../../../tickets/domain/ports/i-solicitante-externo.repository';
 import { ITipoOperacionRepository } from '../../../tickets/domain/ports/i-tipo-operacion.repository';
@@ -22,7 +24,6 @@ import {
 import { AccionSobreTipoNoPermitidaError } from '../../../tickets/domain/errors/tickets.errors';
 import {
   EventoHistorialPdf,
-  LogoPdf,
   SoportePdf,
   TareasPdf,
   TicketPdfVista,
@@ -47,11 +48,6 @@ export interface GenerarPdfTicketResult {
   /** `ticket-<numero>.pdf`. */
   nombreArchivo: string;
 }
-
-const MIME_LOGO: Readonly<Record<string, LogoPdf['formato']>> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpeg',
-};
 
 const CODIGO_COMENTARIO = 'COMENTARIO';
 const CODIGO_CAMBIO_ESTADO = 'CAMBIO_ESTADO';
@@ -130,7 +126,7 @@ export class GenerarPdfTicketUseCase {
       this.tipoTicketRepo.findById(ticket.tipoId),
       this.ticketSoporteRepo.findByTicketId(ticket.id),
       this.tareaRepo.listarPorTicket(ticket.id),
-      this.resolverLogo(dto.clienteId),
+      logoParaPdf(this.verLogoCliente, dto.clienteId),
     ]);
     // El repositorio ya devuelve solo las activas por `orden`; se reasegura acá por si cambia.
     const tareasActivas = tareas
@@ -203,24 +199,13 @@ export class GenerarPdfTicketUseCase {
       descripcion: ticket.descripcion,
       soporte: await this.armarSoporte(soporte),
       ubicacion: ticket.ubicacion?.trim() ? ticket.ubicacion : null,
-      tareas: armarTareas(tareasActivas, nombreDe),
+      tareas: armarTareas(tareasActivas, nombreDe, ticket.modalidad),
       historial,
       generadoEl: fechaHoraCsv(this.ahora()),
     };
 
     const buffer = await this.generador.generar(vista);
     return Result.ok({ buffer, nombreArchivo: `ticket-${nombreSeguro(ticket.numero)}.pdf` });
-  }
-
-  /** Solo png/jpeg se embeben; webp, sin logo o fallo de lectura → `null` (se imprime el nombre). */
-  private async resolverLogo(clienteId: string): Promise<LogoPdf | null> {
-    const resultado = await this.verLogoCliente.execute(clienteId);
-    if (resultado.isFail()) {
-      return null;
-    }
-    const { buffer, mimeType } = resultado.getValue();
-    const formato = MIME_LOGO[mimeType.toLowerCase()];
-    return formato ? { buffer, formato } : null;
   }
 
   private async armarSoporte(
@@ -240,9 +225,11 @@ export class GenerarPdfTicketUseCase {
 function armarTareas(
   tareas: TareaTicketEntity[],
   nombreDe: (id: string | null) => string | null,
+  modalidad: ModalidadTicket,
 ): TareasPdf | null {
   if (tareas.length === 0) return null;
-  const avance = calcularAvanceTareas(tareas);
+  // En un ticket EXTERNA el avance pondera por peso (odd/edilicia-obra-externa, S3).
+  const avance = calcularAvanceTareas(tareas, modalidad);
   return {
     porcentajeAvance: avance.porcentaje,
     completadas: avance.completadas,

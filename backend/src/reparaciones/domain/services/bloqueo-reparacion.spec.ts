@@ -18,7 +18,9 @@ describe('comprasQueBloquean', () => {
     numero,
     tipoTicketId: null,
     cancelada: false,
-    items: [{ estadoAprobacion: 'PENDIENTE', comprado: false, entregado: false }],
+    items: [
+      { estadoAprobacion: 'PENDIENTE', comprado: false, entregado: false, esServicio: false },
+    ],
   });
 
   it('una compra activa bloquea', () => {
@@ -35,7 +37,7 @@ describe('comprasQueBloquean', () => {
       numero: 'C-0001',
       tipoTicketId: null,
       cancelada: true,
-      items: [{ estadoAprobacion: 'APROBADO', comprado: true, entregado: true }],
+      items: [{ estadoAprobacion: 'APROBADO', comprado: true, entregado: true, esServicio: false }],
     };
 
     expect(comprasQueBloquean([cancelada])).toEqual([]);
@@ -47,7 +49,9 @@ describe('comprasQueBloquean', () => {
       numero: 'C-0001',
       tipoTicketId: null,
       cancelada: false,
-      items: [{ estadoAprobacion: 'RECHAZADO', comprado: false, entregado: false }],
+      items: [
+        { estadoAprobacion: 'RECHAZADO', comprado: false, entregado: false, esServicio: false },
+      ],
     };
 
     expect(comprasQueBloquean([rechazada])).toEqual([]);
@@ -59,7 +63,7 @@ describe('comprasQueBloquean', () => {
       numero: 'C-0001',
       tipoTicketId: null,
       cancelada: false,
-      items: [{ estadoAprobacion: 'APROBADO', comprado: true, entregado: true }],
+      items: [{ estadoAprobacion: 'APROBADO', comprado: true, entregado: true, esServicio: false }],
     };
 
     expect(comprasQueBloquean([cerradaConFaltante])).toEqual([]);
@@ -88,10 +92,42 @@ describe('comprasQueBloquean', () => {
       numero: 'C-0002',
       tipoTicketId: null,
       cancelada: false,
-      items: [{ estadoAprobacion: 'APROBADO', comprado: true, entregado: true }],
+      items: [{ estadoAprobacion: 'APROBADO', comprado: true, entregado: true, esServicio: false }],
     };
 
     expect(comprasQueBloquean([activa, completada])).toEqual([activa]);
+  });
+
+  describe('ítems de servicio (odd/edilicia-obra-externa, S2)', () => {
+    const activaCon = (...esServicio: boolean[]): CompraVinculada => ({
+      compraId: 'c1',
+      numero: 'C-0001',
+      tipoTicketId: null,
+      cancelada: false,
+      items: esServicio.map((servicio) => ({
+        estadoAprobacion: 'PENDIENTE' as const,
+        comprado: false,
+        entregado: false,
+        esServicio: servicio,
+      })),
+    });
+
+    it('una compra activa cuyos ítems son todos de servicio no bloquea', () => {
+      expect(comprasQueBloquean([activaCon(true, true)])).toEqual([]);
+    });
+
+    it('una compra activa mixta (servicio y bien) sigue bloqueando', () => {
+      const mixta = activaCon(true, false);
+
+      expect(comprasQueBloquean([mixta])).toEqual([mixta]);
+    });
+
+    it('junto a una compra de bienes activa, solo la de bienes bloquea', () => {
+      const servicio = activaCon(true);
+      const bienes = { ...activaCon(false), compraId: 'c2', numero: 'C-0002' };
+
+      expect(comprasQueBloquean([servicio, bienes])).toEqual([bienes]);
+    });
   });
 
   // Test opcional del tasks (WU1.8) — lectura de fuente que confirma que

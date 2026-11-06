@@ -10,6 +10,7 @@ import {
   TICKET_UBICACION_MAX_LENGTH,
   MENSAJE_TITULO_DEMASIADO_LARGO,
 } from "@/shared/lib/limites-ticket";
+import { MODALIDADES_TICKET } from "./modalidad";
 
 const ubicacionSchema = z
   .string()
@@ -30,6 +31,7 @@ export const crearTicketSchema = z.object({
   ticketReferenciaId: z.string().uuid().optional().or(z.literal("")),
   ubicacion: ubicacionSchema,
   sectorId: sectorIdSchema,
+  modalidad: z.enum(MODALIDADES_TICKET),
 });
 export type CrearTicketFormValues = z.infer<typeof crearTicketSchema>;
 
@@ -42,6 +44,8 @@ export const editarTicketSchema = z.object({
   prioridadId: z.string().uuid("Elija una prioridad"),
   ubicacion: ubicacionSchema,
   sectorId: sectorIdSchema,
+  /** Opcional: con el control deshabilitado no llega valor (odd/edilicia-obra-externa, S1). */
+  modalidad: z.enum(MODALIDADES_TICKET).optional(),
 });
 export type EditarTicketFormValues = z.infer<typeof editarTicketSchema>;
 
@@ -71,3 +75,45 @@ export const crearTareaSchema = z.object({
     ),
 });
 export type CrearTareaFormValues = z.infer<typeof crearTareaSchema>;
+
+/** Tope del peso de una tarea y de la suma del ticket (espejo de `PESO_TAREAS_MAX`). */
+export const PESO_TAREAS_MAX = 100;
+
+/**
+ * Peso de una tarea de un ticket EXTERNA (odd/edilicia-obra-externa, S4, S9, L17): entero de 0 a
+ * 100, y sin que la suma del ticket pase de 100. `disponible` es lo que queda para esta tarea
+ * (100 menos el peso de las demás activas); el backend repite la cuenta con el lock del ticket.
+ *
+ * El campo vacío es "requerido", nunca 0: un peso borrado no puede guardarse como cero en silencio.
+ *
+ * @param disponible Peso máximo que admite esta tarea sin pasar el tope del ticket.
+ * @returns El schema del formulario de peso.
+ */
+export function pesoTareaSchema(disponible: number) {
+  return z.object({
+    peso: z.preprocess(
+      (valor) => (typeof valor === "string" ? (valor.trim() === "" ? undefined : Number(valor)) : valor),
+      z
+        .number({ required_error: "El peso es requerido", invalid_type_error: "Ingrese un número entero" })
+        .int("El peso es un número entero")
+        .min(0, "El peso no puede ser negativo")
+        .max(
+          disponible,
+          `Las tareas sumarían más del ${PESO_TAREAS_MAX} %. Para esta tarea quedan ${disponible} %; baje primero el peso de otras.`,
+        ),
+    ),
+  });
+}
+export type PesoTareaFormValues = { peso: number };
+
+/** Tope del motivo de anulación (espejo de `MOTIVO_ANULACION_MAX_LENGTH`). */
+export const MOTIVO_ANULACION_MAX_LENGTH = 2000;
+
+/** Espejo de `AnularCertificadoBodyDto`: al menos un carácter visible y hasta 2000. */
+export const anularCertificadoSchema = z.object({
+  motivo: z
+    .string()
+    .regex(/\S/, "El motivo es requerido")
+    .max(MOTIVO_ANULACION_MAX_LENGTH, mensajeDemasiadoLargo("El motivo", MOTIVO_ANULACION_MAX_LENGTH)),
+});
+export type AnularCertificadoFormValues = z.infer<typeof anularCertificadoSchema>;

@@ -100,7 +100,14 @@ export function CompraItemsSection({ compraId, items }: CompraItemsSectionProps)
               const estadoConfig = ESTADO_ITEM_CONFIG[item.estadoAprobacion];
               return (
                 <TableRow key={item.id} data-testid={`item-compra-${item.id}`}>
-                  <TableCell>{item.descripcion}</TableCell>
+                  <TableCell>
+                    {item.descripcion}
+                    {item.esServicio && (
+                      <Badge variant="outline" className="ml-2">
+                        Servicio
+                      </Badge>
+                    )}
+                  </TableCell>
                   <TableCell>{item.cantidad}</TableCell>
                   <TableCell>{item.proveedor}</TableCell>
                   <TableCell>{formatearMontoConMoneda(item.moneda, item.monto)}</TableCell>

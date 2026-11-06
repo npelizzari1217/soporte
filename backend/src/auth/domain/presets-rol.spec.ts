@@ -180,6 +180,14 @@ describe('PLANTILLAS_POR_TIPO_ROL (T9a, S7, L50.4)', () => {
       }
     }
   });
+
+  it('ninguna plantilla da Certificar: lo concede un administrador (odd/edilicia-obra-externa, L23)', () => {
+    for (const plantilla of Object.values(PLANTILLAS_POR_TIPO_ROL)) {
+      for (const modulo of MODULOS) {
+        expect(accionesDePlantilla(plantilla, modulo)).not.toContain('CERTIFICAR');
+      }
+    }
+  });
 });
 
 describe('obtenerPresetDeRol', () => {

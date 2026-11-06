@@ -7,6 +7,7 @@ import { buildUser } from "../../../../test/render-with-providers";
 import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
 import type { PermisosPorTipo } from "@/shared/auth/permisos-por-tipo";
 import { SubtareasDialog } from "./subtareas-dialog";
+import type { ModalidadTicket } from "@/features/tickets/modalidad";
 import type { TareaTicket } from "@/features/tickets/types";
 
 /** Envuelve filas en la página que devuelve `GET /reparaciones` (odd/reparaciones-paginadas). */
@@ -39,6 +40,7 @@ const TAREA: TareaTicket = {
   completadaPorId: null,
   completadaPorNombre: null,
   completadaPorApellido: null,
+  peso: 0,
   createdAt: "2026-10-01T10:00:00.000Z",
 };
 
@@ -69,7 +71,11 @@ function mockBackend({ asignadoId = "u-responsable" }: { asignadoId?: string | n
   return { rutasViejas };
 }
 
-function renderDialog(user = buildUser(), permisos: PermisosPorTipo = MODIFICA_EL_TIPO) {
+function renderDialog(
+  user = buildUser(),
+  permisos: PermisosPorTipo = MODIFICA_EL_TIPO,
+  modalidad: ModalidadTicket = "INTERNA",
+) {
   return renderConPermisos(
     <SubtareasDialog
       ticketId={TICKET_ID}
@@ -78,6 +84,7 @@ function renderDialog(user = buildUser(), permisos: PermisosPorTipo = MODIFICA_E
       trigger={<button>Ver subtareas</button>}
       estadoCodigo="EN_PROCESO"
       bloqueada={false}
+      modalidad={modalidad}
     />,
     { user, permisos },
   );
@@ -200,5 +207,32 @@ describe("SubtareasDialog — lector del tipo de la reparación (T12)", () => {
     expect(await screen.findByText("No se pudieron cargar las tareas.")).toBeInTheDocument();
     expect(screen.queryByText("Sin tareas todavía.")).not.toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Tareas (solo lectura)" })).not.toBeInTheDocument();
+  });
+});
+
+describe("SubtareasDialog — peso de las tareas (odd/edilicia-obra-externa, S4)", () => {
+  it.each([
+    ["EXTERNA", true],
+    ["INTERNA", false],
+  ] as const)("con la modalidad %s de la fila, el peso se muestra: %s", async (modalidad, conPeso) => {
+    const user = userEvent.setup();
+    mockBackend();
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}/tareas`, () =>
+        HttpResponse.json({ items: [{ ...TAREA, peso: 35 }], avance: { total: 1, completadas: 0, porcentaje: 0 } }),
+      ),
+    );
+    renderDialog(buildUser({ sub: "u-responsable", rol: "TECNICO", permisos: [] }), MODIFICA_EL_TIPO, modalidad);
+
+    await user.click(screen.getByRole("button", { name: /ver subtareas/i }));
+    await screen.findByText("Revisar cañería");
+
+    if (conPeso) {
+      expect(screen.getByText(/Pesos asignados: 35 % de 100 %/)).toBeInTheDocument();
+      expect(screen.getByLabelText("Peso de la tarea Revisar cañería")).toHaveValue(35);
+    } else {
+      expect(screen.queryByText(/Pesos asignados/)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Peso de la tarea Revisar cañería")).not.toBeInTheDocument();
+    }
   });
 });

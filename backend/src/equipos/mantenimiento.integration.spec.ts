@@ -140,6 +140,8 @@ describe('MANTENIMIENTO — flujo BASE sin código nuevo (F3-M1, ADR-10)', () =>
       new NoopDomainEventPublisher(),
       txRunner,
       new PrismaRelojSlaMarcador(tenantContext),
+      // Los tickets de este spec son INTERNA: la regla de cierre de S10 (odd/edilicia-obra-externa) no aplica.
+      { tareasSinCertificar: async () => 0 },
     );
 
     const tipoMantenimiento = await tenantClient.tipoTicket.findUniqueOrThrow({

@@ -41,6 +41,7 @@ function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
     createdAt: "2026-08-15T12:00:00.000Z",
     updatedAt: "2026-08-15T12:00:00.000Z",
     borradoEn: null,
+    modalidad: "INTERNA",
     ...overrides,
   };
 }

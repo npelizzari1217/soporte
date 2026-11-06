@@ -40,6 +40,15 @@ import {
 } from '../tickets/domain/ports/i-usuario-master.checker';
 import { TicketsModule } from '../tickets/tickets.module';
 import { GenerarPdfTicketUseCase } from './application/use-cases/generar-pdf-ticket.use-case';
+import { GenerarPdfCertificadoUseCase } from './application/use-cases/generar-pdf-certificado.use-case';
+import {
+  GENERADOR_PDF_CERTIFICADO,
+  IGeneradorPdfCertificado,
+} from './domain/ports/i-generador-pdf-certificado';
+import {
+  CERTIFICADO_AVANCE_REPOSITORY,
+  ICertificadoAvanceRepository,
+} from '../tickets/domain/ports/i-certificado-avance.repository';
 import { GENERADOR_PDF_TICKET, IGeneradorPdfTicket } from './domain/ports/i-generador-pdf-ticket';
 import { PdfkitGeneradorPdfTicket } from './infrastructure/pdfkit-generador-pdf-ticket';
 import { TicketPdfController } from './interface/controllers/ticket-pdf.controller';
@@ -60,6 +69,38 @@ import { TicketPdfController } from './interface/controllers/ticket-pdf.controll
   controllers: [TicketPdfController],
   providers: [
     { provide: GENERADOR_PDF_TICKET, useFactory: () => new PdfkitGeneradorPdfTicket() },
+    // odd/edilicia-obra-externa (S7): el mismo adaptador dibuja el certificado de avance.
+    { provide: GENERADOR_PDF_CERTIFICADO, useExisting: GENERADOR_PDF_TICKET },
+    {
+      provide: GenerarPdfCertificadoUseCase,
+      useFactory: (
+        obtenerTicket: ObtenerTicketUseCase,
+        certificadoRepo: ICertificadoAvanceRepository,
+        tareaRepo: ITareaTicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+        usuarioMasterChecker: IUsuarioMasterChecker,
+        verLogoCliente: VerLogoClienteUseCase,
+        generador: IGeneradorPdfCertificado,
+      ): GenerarPdfCertificadoUseCase =>
+        new GenerarPdfCertificadoUseCase(
+          obtenerTicket,
+          certificadoRepo,
+          tareaRepo,
+          tipoTicketRepo,
+          usuarioMasterChecker,
+          verLogoCliente,
+          generador,
+        ),
+      inject: [
+        ObtenerTicketUseCase,
+        CERTIFICADO_AVANCE_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
+        USUARIO_MASTER_CHECKER,
+        VerLogoClienteUseCase,
+        GENERADOR_PDF_CERTIFICADO,
+      ],
+    },
     {
       provide: GenerarPdfTicketUseCase,
       useFactory: (

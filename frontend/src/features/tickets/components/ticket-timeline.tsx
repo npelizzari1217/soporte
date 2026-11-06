@@ -20,6 +20,8 @@ import {
   Undo2,
   UserCheck,
   UserCog,
+  BadgeCheck,
+  BadgeX,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatearInstante } from "@/shared/lib/formato-fecha";
@@ -40,6 +42,9 @@ const TIPO_OPERACION_CONFIG: Record<string, { label: string; icon: typeof Messag
   // autor queda en la entrada (`autorId`), igual que en las demás operaciones.
   TICKET_BORRADO: { label: "Ticket borrado", icon: ArchiveX },
   TICKET_RECUPERADO: { label: "Ticket recuperado", icon: ArchiveRestore },
+  // Certificados de avance de obra (odd/edilicia-obra-externa, S8).
+  CERTIFICADO_EMITIDO: { label: "Certificado emitido", icon: BadgeCheck },
+  CERTIFICADO_ANULADO: { label: "Certificado anulado", icon: BadgeX },
 };
 
 export interface TicketTimelineProps {

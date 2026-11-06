@@ -31,6 +31,8 @@ export interface AgregarItemCompraDto {
    * la recepción sume el stock solo.
    */
   insumoId?: string | null;
+  /** El ítem contrata un servicio (odd/edilicia-obra-externa, S2); ausente equivale a `false`. */
+  esServicio?: boolean;
 }
 
 /**
@@ -123,6 +125,7 @@ export class AgregarItemCompraUseCase {
         fechaCotizacion: dto.fechaCotizacion,
         observaciones: dto.observaciones ?? null,
         insumoId: dto.insumoId ?? null,
+        esServicio: dto.esServicio ?? false,
       });
       if (agregarResult.isFail()) {
         return Result.fail<CompraEntity, DomainError>(agregarResult.getError());

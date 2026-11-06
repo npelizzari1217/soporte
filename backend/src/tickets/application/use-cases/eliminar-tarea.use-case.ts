@@ -1,7 +1,7 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
-import { TareaNoEncontradaError } from '../../domain/errors/tareas.errors';
+import { TareaCertificadaError, TareaNoEncontradaError } from '../../domain/errors/tareas.errors';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
@@ -43,7 +43,10 @@ export class EliminarTareaUseCase {
   constructor(
     private readonly ticketRepo: TicketRepoDeTareas,
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
-    private readonly tareaRepo: Pick<ITareaTicketRepository, 'buscarPorId' | 'darDeBajaSiActiva'>,
+    private readonly tareaRepo: Pick<
+      ITareaTicketRepository,
+      'buscarPorId' | 'darDeBajaSiActiva' | 'estaCertificada'
+    >,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
@@ -88,6 +91,10 @@ export class EliminarTareaUseCase {
         dto.actor.esAdministrador,
       );
       if (vigente.isFail()) return vigente;
+      // S8 (odd/edilicia-obra-externa): una tarea certificada no se borra sin anular el certificado.
+      if (await this.tareaRepo.estaCertificada(tarea.id)) {
+        return Result.fail(new TareaCertificadaError(tarea.descripcion, 'eliminar'));
+      }
       if (!(await this.tareaRepo.darDeBajaSiActiva(tarea))) {
         return Result.fail(new TareaNoEncontradaError(tarea.id));
       }

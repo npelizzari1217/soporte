@@ -44,6 +44,7 @@ import {
 import { conValorFueraDeCatalogo } from "@/shared/lib/opciones-catalogo";
 import { useReaplicarAlResolver } from "@/shared/hooks/use-reaplicar-al-resolver";
 import { useEditarItemCompra } from "../hooks/use-compra-mutations";
+import { CampoEsServicio } from "./campo-es-servicio";
 import { aFechaInput } from "@/shared/lib/formato-fecha";
 import { editarItemCompraSchema, type EditarItemCompraFormValues } from "../schemas";
 import type { EditarItemCompraDto, ItemCompra } from "../types";
@@ -97,6 +98,7 @@ export function ItemEditDialog({ compraId, item }: ItemEditDialogProps) {
     // `<input type="date">` descarta el valor y el campo aparece vacío.
     fechaCotizacion: aFechaInput(item.fechaCotizacion),
     observaciones: item.observaciones ?? "",
+    esServicio: item.esServicio,
   };
 
   const {
@@ -105,6 +107,7 @@ export function ItemEditDialog({ compraId, item }: ItemEditDialogProps) {
     handleSubmit,
     reset,
     setValue,
+    watch,
     formState: { errors },
   } = useForm<EditarItemCompraFormValues>({
     resolver: zodResolver(editarItemCompraSchema),
@@ -115,7 +118,17 @@ export function ItemEditDialog({ compraId, item }: ItemEditDialogProps) {
   // tiene que rearmarse en cada apertura. Sin esto, abrir con el catálogo
   // todavía cargando deja el `<select>` mostrando "Sin insumo" mientras el
   // formulario conserva el insumo real — se aprueba una cosa y se guarda otra.
-  useReaplicarAlResolver(open, insumosQuery.isSuccess, "insumoId", insumoIdVigente, setValue);
+  const esServicio = watch("esServicio") === true;
+  // Con el servicio ya marcado, el valor a reaplicar es "sin insumo": si el catálogo resuelve DESPUÉS
+  // de marcar la casilla, reponer el insumo vigente dejaría un servicio con insumo que el schema
+  // rechaza (odd/edilicia-obra-externa, L15).
+  useReaplicarAlResolver(
+    open,
+    insumosQuery.isSuccess,
+    "insumoId",
+    esServicio ? "" : insumoIdVigente,
+    setValue,
+  );
 
   function submit(values: EditarItemCompraFormValues) {
     const dto: EditarItemCompraDto = {
@@ -131,7 +144,9 @@ export function ItemEditDialog({ compraId, item }: ItemEditDialogProps) {
       // formulario quedó desincronizado. `""` es "sin insumo" y viaja como
       // `null` EXPLÍCITO: con el PATCH semántico, `undefined` no tocaría el
       // campo y el vínculo que el usuario acaba de sacar seguiría puesto.
-      ...(recibido ? {} : { insumoId: values.insumoId || null }),
+      ...(recibido ? {} : { insumoId: values.esServicio ? null : values.insumoId || null }),
+      // Congelado con el ítem decidido, igual que en el backend (odd/edilicia-obra-externa, L11).
+      ...(decidido ? {} : { esServicio: values.esServicio }),
     };
     editarMutation.mutate({ itemId: item.id, dto }, { onSuccess: () => setOpen(false) });
   }
@@ -167,11 +182,19 @@ export function ItemEditDialog({ compraId, item }: ItemEditDialogProps) {
               </p>
             )}
           </div>
+          <CampoEsServicio
+            control={control}
+            name="esServicio"
+            onMarcar={() => setValue("insumoId", "", { shouldDirty: true })}
+            motivoBloqueo={
+              decidido ? "No se puede cambiar: el ítem ya fue aprobado o rechazado." : undefined
+            }
+          />
           <div className="flex flex-col gap-1">
             <label htmlFor="item-editar-insumo" className="text-sm font-medium text-foreground">
               Insumo (opcional)
             </label>
-            <Select id="item-editar-insumo" disabled={recibido} {...register("insumoId")}>
+            <Select id="item-editar-insumo" disabled={recibido || esServicio} {...register("insumoId")}>
               <option value="">Sin insumo</option>
               {opcionesInsumo.map((opcion) => (
                 <option key={opcion.id} value={opcion.id}>
@@ -179,6 +202,11 @@ export function ItemEditDialog({ compraId, item }: ItemEditDialogProps) {
                 </option>
               ))}
             </Select>
+            {errors.insumoId && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.insumoId.message}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               {recibido
                 ? "El insumo no se puede cambiar: el ítem ya recibió mercadería y el stock quedó imputado. Para corregir las existencias, usar un ajuste manual en el módulo de insumos."

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
@@ -192,6 +192,29 @@ describe("CompraDetailView", () => {
     // La cabecera y los ítems se renderizan igual — el fallo de bitácora es aislado.
     await screen.findByText("Resmas de papel A4");
     expect(await screen.findByText("No se pudo cargar la bitácora.")).toBeInTheDocument();
+  });
+
+  it("marca con «Servicio» solo el ítem de servicio (odd/edilicia-obra-externa, S2)", async () => {
+    const [primero, segundo] = COMPRA_DETALLE.items;
+    server.use(
+      http.get("/api/compras/c1", () =>
+        HttpResponse.json({
+          ...COMPRA_DETALLE,
+          items: [
+            { ...primero, esServicio: false },
+            { ...segundo, descripcion: "Mano de obra", esServicio: true },
+          ],
+        }),
+      ),
+      http.get("/api/compras/c1/operaciones", () => HttpResponse.json(OPERACIONES)),
+    );
+    renderWithProviders(<CompraDetailView compraId="c1" />, {
+      user: buildUser({ modulos: ["COMPRAS"] }),
+    });
+
+    await screen.findByText("Mano de obra");
+    expect(within(screen.getByTestId("item-compra-i2")).getByText("Servicio")).toBeInTheDocument();
+    expect(within(screen.getByTestId("item-compra-i1")).queryByText("Servicio")).not.toBeInTheDocument();
   });
 
   it("muestra el tipo de ticket de la compra (odd/compras-por-tipo)", async () => {

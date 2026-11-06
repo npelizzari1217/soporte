@@ -63,6 +63,7 @@ import {
   TipoTicketNoEncontradoError,
   TipoTicketNoPermitidoEnAltaError,
   SectorTicketInexistenteError,
+  ModalidadNoEditableError,
   SinCicloActivoError,
   SecuenciaAgotadaError,
   TicketNoEncontradoError,
@@ -143,6 +144,8 @@ export function toHttpException(
     error instanceof SolicitanteInvalidoError ||
     // odd/ubicacion-sector-ticket: sector del alta inexistente.
     error instanceof SectorTicketInexistenteError ||
+    // odd/edilicia-obra-externa (S1): cambio de modalidad con tareas o compras.
+    error instanceof ModalidadNoEditableError ||
     // odd/tasks/tipos-ticket-por-modulo.md (S2): tipo elegido inexistente, inactivo o no admitido.
     error instanceof TipoTicketNoEncontradoError ||
     error instanceof TipoTicketNoPermitidoEnAltaError ||
@@ -217,6 +220,7 @@ export class ReparacionesController {
       tipoId: dto.tipoId ?? null,
       ubicacion: dto.ubicacion ?? null,
       sectorId: dto.sectorId ?? null,
+      modalidad: dto.modalidad,
       solicitanteId: user.sub,
       clienteId: user.cliente_id as string,
       autorId: user.sub,
@@ -325,6 +329,7 @@ export class ReparacionesController {
         prioridadId: dto.prioridadId,
         ubicacion: dto.ubicacion,
         sectorId: dto.sectorId,
+        modalidad: dto.modalidad,
         actorEsRoot: user.is_global_admin === true,
         alcance,
       }),

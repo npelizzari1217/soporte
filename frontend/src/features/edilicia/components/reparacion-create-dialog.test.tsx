@@ -55,6 +55,19 @@ describe("ReparacionCreateDialog — sector", () => {
     expect(bodies[0]).toMatchObject({ ubicacion: "Baño planta baja", sectorId: SECTOR_ID });
   });
 
+  it("la modalidad nace en Técnicos internos y viaja la elegida (odd/edilicia-obra-externa, S1)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ReparacionCreateDialog />, { user: buildUser({ permisos: ["EDILICIA:ALTAS"] }) });
+
+    await abrirYCompletar(user);
+    expect(screen.getByLabelText("Modalidad")).toHaveValue("INTERNA");
+    await user.selectOptions(screen.getByLabelText("Modalidad"), "EXTERNA");
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ modalidad: "EXTERNA" });
+  });
+
   it("sin sector («Sin sector»), POST /reparaciones no lo manda", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ReparacionCreateDialog />, { user: buildUser({ permisos: ["EDILICIA:ALTAS"] }) });

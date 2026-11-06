@@ -32,6 +32,8 @@ export interface EditarItemCompraDto {
    * EXPLÍCITO lo borra (insumos-entrega-3).
    */
   insumoId?: string | null;
+  /** Ausente no toca el campo (odd/edilicia-obra-externa, S2). */
+  esServicio?: boolean;
 }
 
 /**
@@ -122,6 +124,7 @@ export class EditarItemCompraUseCase {
     const resultadoEdicion = compra.editarItem(dto.itemId, {
       descripcion: dto.descripcion,
       insumoId: dto.insumoId,
+      esServicio: dto.esServicio,
       cantidad: dto.cantidad,
       proveedor: dto.proveedor,
       monto: dto.monto,

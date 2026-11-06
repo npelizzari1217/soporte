@@ -4,6 +4,7 @@ import { enCentesimas } from '../../../shared/domain/centesimas';
 import { DomainError, Result } from '../../../shared/domain/result';
 import {
   CantidadEntregadaExcedeRecibidaError,
+  ItemServicioConInsumoError,
   CantidadEntregadaRetrocedeError,
   CantidadOrdenadaExcedeSolicitadaError,
   CantidadOrdenadaRetrocedeError,
@@ -93,6 +94,11 @@ export interface ItemCompraProps {
    * sería inventar un `null`.
    */
   insumoId: string | null;
+  /**
+   * El ítem contrata un servicio y no un insumo (odd/edilicia-obra-externa, S2). Un ítem de
+   * servicio nunca declara insumo (`ItemServicioConInsumoError`), así que recibirlo no mueve stock.
+   */
+  esServicio: boolean;
   cantidad: number;
   proveedor: string;
   monto: number;
@@ -122,6 +128,8 @@ export interface ItemCompraCreateProps {
    * nada. Mismo criterio que `EquipoInformaticoCreateProps.modeloEquipoId`.
    */
   insumoId?: string | null;
+  /** OPCIONAL, y `false` por defecto: la mayoría de las altas compra bienes. */
+  esServicio?: boolean;
   cantidad: number;
   proveedor: string;
   monto: number;
@@ -147,6 +155,11 @@ export interface ItemCompraActualizarProps {
    * Sujeto a `asegurarInsumoReasignable()`, NO al congelamiento.
    */
   insumoId?: string | null;
+  /**
+   * Se valida junto con `insumoId` sobre el valor RESULTANTE (ver `validarServicioSinInsumo`), y
+   * queda congelado cuando el ítem está decidido (`ItemCompraCongeladoError`).
+   */
+  esServicio?: boolean;
   cantidad?: number;
   proveedor?: string;
   monto?: number;
@@ -182,6 +195,7 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
     const fullProps: ItemCompraProps = {
       ...props,
       insumoId: props.insumoId ?? null,
+      esServicio: props.esServicio ?? false,
       estadoAprobacion: 'PENDIENTE',
       decididoPorId: null,
       decididoEn: null,
@@ -276,6 +290,31 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
   /** Insumo del catálogo que este ítem compra, `null` si no lo declara (ver `ItemCompraProps.insumoId`). */
   get insumoId(): string | null {
     return this.props.insumoId;
+  }
+
+  /** `true` si el ítem contrata un servicio (ver `ItemCompraProps.esServicio`). */
+  get esServicio(): boolean {
+    return this.props.esServicio;
+  }
+
+  /**
+   * Regla compartida por el alta y la edición: un ítem de servicio no declara insumo. Se pregunta
+   * sobre los valores RESULTANTES, así que un PATCH que solo marca `esServicio` sobre un ítem con
+   * insumo también se rechaza. Es la misma regla que el CHECK
+   * `items_compra_servicio_sin_insumo_check`, que queda como respaldo.
+   *
+   * @param esServicio Valor resultante de `esServicio`.
+   * @param insumoId Valor resultante de `insumoId`.
+   * @returns `ItemServicioConInsumoError` si las dos condiciones se dan juntas.
+   */
+  static validarServicioSinInsumo(
+    esServicio: boolean,
+    insumoId: string | null,
+  ): Result<void, DomainError> {
+    if (esServicio && insumoId !== null) {
+      return Result.fail(new ItemServicioConInsumoError());
+    }
+    return Result.ok(undefined);
   }
 
   get estadoAprobacion(): EstadoAprobacionItem {
@@ -448,6 +487,26 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
       }
     }
 
+    // Congelado con el ítem decidido (L11): cambiarlo después de la aprobación desbloquearía el
+    // ticket sin que nadie revise la compra. Dispara por CAMBIO EFECTIVO, como `insumoId`, para que
+    // un formulario que reenvía el shape completo pueda seguir editando la descripción.
+    if (datos.esServicio !== undefined && datos.esServicio !== this.props.esServicio) {
+      const guardCongelado = this.asegurarNoCongelado();
+      if (guardCongelado.isFail()) {
+        return guardCongelado;
+      }
+    }
+
+    if (datos.esServicio !== undefined || datos.insumoId !== undefined) {
+      const guardServicio = ItemCompraEntity.validarServicioSinInsumo(
+        datos.esServicio ?? this.props.esServicio,
+        datos.insumoId === undefined ? this.props.insumoId : datos.insumoId,
+      );
+      if (guardServicio.isFail()) {
+        return guardServicio;
+      }
+    }
+
     const tocaCamposValidables = tocaCamposCongelados || datos.fechaCotizacion !== undefined;
     if (tocaCamposValidables) {
       ItemCompraEntity.validarCamposBase(
@@ -481,6 +540,9 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
     }
     if (datos.insumoId !== undefined) {
       this.props.insumoId = datos.insumoId;
+    }
+    if (datos.esServicio !== undefined) {
+      this.props.esServicio = datos.esServicio;
     }
 
     this.touch();

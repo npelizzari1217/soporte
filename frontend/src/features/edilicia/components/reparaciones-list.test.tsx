@@ -48,6 +48,8 @@ function buildReparacion(overrides: Partial<ReparacionListItem> = {}): Reparacio
     cantidadComentarios: 0,
     bloqueada: false,
     comprasQueBloquean: [],
+    modalidad: "INTERNA",
+    modalidadEditable: true,
     ...overrides,
   };
 }
@@ -310,6 +312,7 @@ describe("ReparacionesList — el avance de la fila sigue a las tareas", () => {
       completadaPorId: "u1",
       completadaPorNombre: "Juan",
       completadaPorApellido: "Pérez",
+      peso: 0,
       createdAt: "2026-08-19T09:00:00.000Z",
       ...overrides,
     };
@@ -615,7 +618,7 @@ describe("ReparacionesList — editar una reparación no empezada (odd/detalle-t
     expect(screen.getByRole("button", { name: "Editar EDI-0032" })).toBeDisabled();
   });
 
-  it("el diálogo precarga la fila y hace PATCH /reparaciones/:id con los cinco campos; el listado se refresca", async () => {
+  it("el diálogo precarga la fila y hace PATCH /reparaciones/:id con sus campos y la modalidad; el listado se refresca", async () => {
     const user = userEvent.setup();
     mockCatalogos();
     let titulo = "Reparar cañería";
@@ -665,9 +668,62 @@ describe("ReparacionesList — editar una reparación no empezada (odd/detalle-t
         prioridadId: PRIORIDAD_ALTA,
         ubicacion: "Aula 1",
         sectorId: null,
+        modalidad: "INTERNA",
       }),
     );
     expect(await screen.findByText("Reparar la cañería del baño")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["editable", true],
+    ["no editable", false],
+  ])("modalidad %s (odd/edilicia-obra-externa, S1)", async (_caso, editable) => {
+    const user = userEvent.setup();
+    mockCatalogos();
+    let bodyRecibido: Record<string, unknown> | null = null;
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json(paginaDe([
+          buildReparacion({
+            id: "rep-mod",
+            numero: "EDI-0050",
+            prioridadId: PRIORIDAD_MEDIA,
+            modalidad: "INTERNA",
+            modalidadEditable: editable,
+          }),
+        ])),
+      ),
+      http.patch("/api/reparaciones/rep-mod", async ({ request }) => {
+        bodyRecibido = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({});
+      }),
+    );
+
+    renderWithProviders(<ReparacionesList />, {
+      user: buildUser({ permisos: ["EDILICIA:LECTURA", "EDILICIA:MODIFICACION"] }),
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Editar EDI-0050" }));
+    const dialogo = await screen.findByRole("dialog");
+    const select = within(dialogo).getByLabelText("Modalidad");
+    expect(select).toHaveValue("INTERNA");
+
+    if (editable) {
+      await user.selectOptions(select, "EXTERNA");
+    } else {
+      expect(select).toBeDisabled();
+      expect(select).toHaveAccessibleDescription(
+        "La modalidad solo se puede cambiar mientras el ticket no tenga tareas ni compras vinculadas.",
+      );
+    }
+    await user.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(bodyRecibido).not.toBeNull());
+    if (editable) {
+      expect(bodyRecibido).toMatchObject({ modalidad: "EXTERNA" });
+    } else {
+      expect(bodyRecibido).not.toHaveProperty("modalidad");
+    }
   });
 });
 

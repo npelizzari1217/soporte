@@ -1,6 +1,9 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
-import { TareaTicketNoEditableError } from '../../domain/errors/tareas.errors';
+import {
+  TareaEnObraExternaCerradaError,
+  TareaTicketNoEditableError,
+} from '../../domain/errors/tareas.errors';
 import { IBloqueoTicketRepository } from '../../domain/ports/i-bloqueo-ticket.repository';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { verificarTicketModificable } from './solo-comentarios';
@@ -61,5 +64,20 @@ export class VerificadorTicketEditable {
       actorEsAdministrador,
     );
     return modificable.isFail() ? Result.fail(modificable.getError()) : Result.ok(undefined);
+  }
+
+  /**
+   * En un ticket EXTERNA cerrado no entra una tarea nueva, para nadie (odd/edilicia-obra-externa,
+   * S10, L36): no se podría certificar (L26) y el ticket quedaría cerrado con una tarea sin
+   * certificar. Se pregunta sobre el ticket releído con el lock.
+   *
+   * @param ticket Ticket releído con la fila bloqueada (`bloquearTicketActivo`).
+   * @returns Ok, o `TareaEnObraExternaCerradaError` (422).
+   */
+  async verificarAltaDeTarea(ticket: TicketEntity): Promise<Result<void, DomainError>> {
+    if (ticket.modalidad !== 'EXTERNA') return Result.ok(undefined);
+    const estado = await this.estadoRepo.findById(ticket.estadoId);
+    if (estado?.codigo === 'CERRADO') return Result.fail(new TareaEnObraExternaCerradaError());
+    return Result.ok(undefined);
   }
 }

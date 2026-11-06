@@ -1,3 +1,4 @@
+import { CodigoOperacionCertificado } from '../../domain/constants/tipos-operacion-certificado.constants';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
@@ -255,7 +256,7 @@ export function errorDeCompletadoRechazado(
  */
 export async function resolverTipoOperacion(
   tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
-  codigo: CodigoOperacionTarea | CodigoOperacionBorrado,
+  codigo: CodigoOperacionTarea | CodigoOperacionBorrado | CodigoOperacionCertificado,
 ): Promise<string> {
   const id = await tipoOperacionRepo.findIdByCodigo(codigo);
   if (!id) {

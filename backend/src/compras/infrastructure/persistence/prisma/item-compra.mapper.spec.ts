@@ -25,6 +25,7 @@ function makeFakeRow(overrides: Partial<PrismaItemCompra> = {}): PrismaItemCompr
     compraId: '01966a6a-0000-7000-8000-000000000001',
     descripcion: 'Notebook Dell',
     insumoId: null,
+    esServicio: false,
     cantidad: new Prisma.Decimal('2.00'),
     proveedor: 'Proveedor SA',
     monto: new Prisma.Decimal('150000.50'),
@@ -119,6 +120,11 @@ describe('ItemCompraMapper', () => {
       expect(entity.insumoId).toBeNull();
     });
 
+    it('mapea esServicio en sus dos valores (odd/edilicia-obra-externa, S2)', () => {
+      expect(ItemCompraMapper.toDomain(makeFakeRow({ esServicio: true })).esServicio).toBe(true);
+      expect(ItemCompraMapper.toDomain(makeFakeRow()).esServicio).toBe(false);
+    });
+
     it('mapea las tres fechas de etapa cuando están presentes', () => {
       const row = makeFakeRow({
         fechaOrden: new Date('2026-08-10'),
@@ -146,6 +152,7 @@ describe('ItemCompraMapper', () => {
           fechaCotizacion: new Date('2026-01-05'),
           observaciones: 'Urgente',
           insumoId: null,
+          esServicio: false,
           estadoAprobacion: 'PENDIENTE',
           decididoPorId: null,
           decididoEn: null,
@@ -190,6 +197,7 @@ describe('ItemCompraMapper', () => {
           compraId: 'compra-1',
           descripcion: 'Tóner negro',
           insumoId,
+          esServicio: false,
           cantidad: 3,
           proveedor: 'Proveedor SA',
           monto: 1000,
@@ -214,6 +222,23 @@ describe('ItemCompraMapper', () => {
         null,
       );
     }
+
+    // Mismo riesgo para `esServicio`: un literal acá desmarcaría el servicio en cada guardado.
+    it('emite esServicio de la ENTIDAD (odd/edilicia-obra-externa, S2)', () => {
+      const item = ItemCompraEntity.create({
+        compraId: 'compra-1',
+        descripcion: 'Mano de obra',
+        esServicio: true,
+        cantidad: 1,
+        proveedor: 'Contratista SA',
+        monto: 1000,
+        moneda: 'ARS',
+        fechaCotizacion: new Date('2026-01-05'),
+        observaciones: null,
+      });
+
+      expect(ItemCompraMapper.toPersistence(item).esServicio).toBe(true);
+    });
 
     it('emite el insumo de la ENTIDAD, no un null fijo', () => {
       const data = ItemCompraMapper.toPersistence(itemConInsumo('insumo-a'));

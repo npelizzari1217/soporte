@@ -27,6 +27,8 @@ import { PERMISO_TIPO_TICKET_REPOSITORY } from '../../../tickets/domain/ports/i-
 import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
 import { PermisosTipoTicketEnMemoria } from '../../../tickets/test-helpers/permisos-tipo-ticket-en-memoria';
 import { GenerarPdfTicketUseCase } from '../../application/use-cases/generar-pdf-ticket.use-case';
+import { GenerarPdfCertificadoUseCase } from '../../application/use-cases/generar-pdf-certificado.use-case';
+import { CertificadoNoEncontradoError } from '../../../tickets/domain/errors/certificados.errors';
 import { TicketPdfController } from './ticket-pdf.controller';
 
 /** PDF mínimo con bytes que NO son UTF-8 válido: si algo lo trata como texto, cambian. */
@@ -58,6 +60,7 @@ const guardDeUsuario: CanActivate = {
 };
 
 const generar = { execute: vi.fn() };
+const generarCertificado = { execute: vi.fn() };
 
 /** `user-1` ve e imprime el tipo `tipo-1` (fila de la tabla del tenant). */
 const permisosPorTipo = new PermisosTipoTicketEnMemoria(
@@ -72,6 +75,7 @@ const permisosPorTipo = new PermisosTipoTicketEnMemoria(
   controllers: [TicketPdfController],
   providers: [
     { provide: GenerarPdfTicketUseCase, useValue: generar },
+    { provide: GenerarPdfCertificadoUseCase, useValue: generarCertificado },
     { provide: PERMISO_TIPO_TICKET_REPOSITORY, useValue: permisosPorTipo },
     CargadorAlcanceTicket,
   ],
@@ -160,6 +164,40 @@ describe('TicketPdfController — GET /tickets/:id/pdf', () => {
       permisosPorTipo: new Map([['tipo-1', new Set(['LECTURA', 'IMPRESION'])]]),
       clienteId: 'cliente-1',
       clienteNombre: 'Colegio San Martín',
+    });
+  });
+
+  describe('GET /tickets/:id/certificados/:certificadoId/pdf (odd/edilicia-obra-externa, S7)', () => {
+    it('entrega el PDF del certificado como descarga, con el ticket y el certificado pedidos', async () => {
+      generarCertificado.execute.mockResolvedValue(
+        Result.ok({ buffer: PDF, nombreArchivo: 'certificado-EDI-2026-00007-2.pdf' }),
+      );
+
+      const res = await fetch(`${baseUrl}/tickets/t-1/certificados/c-2/pdf`);
+      const bytes = Buffer.from(await res.arrayBuffer());
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('application/pdf');
+      expect(res.headers.get('content-disposition')).toBe(
+        'attachment; filename="certificado-EDI-2026-00007-2.pdf"',
+      );
+      expect(bytes.equals(PDF)).toBe(true);
+      expect(generarCertificado.execute).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ticketId: 't-1', certificadoId: 'c-2', clienteId: 'cliente-1' }),
+      );
+    });
+
+    it.each([
+      ['un certificado de otro ticket', new CertificadoNoEncontradoError('c-x'), 404],
+      ['sin IMPRESION', new AccionSobreTipoNoPermitidaError('IMPRESION'), 403],
+      ['un ticket que no ve', new TicketNoEncontradoError('t-1'), 404],
+    ])('%s responde %s, sin cuerpo de PDF', async (_caso, error, status) => {
+      generarCertificado.execute.mockResolvedValue(Result.fail(error));
+
+      const res = await fetch(`${baseUrl}/tickets/t-1/certificados/c-x/pdf`);
+
+      expect(res.status).toBe(status);
+      expect(res.headers.get('content-type')).not.toContain('application/pdf');
     });
   });
 });

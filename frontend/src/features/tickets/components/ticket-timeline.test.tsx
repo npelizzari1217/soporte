@@ -24,6 +24,8 @@ const TIPO_OPERACION_MAP = new Map<string, string>([
   ["op-tarea-eliminada", "TAREA_ELIMINADA"],
   ["op-ticket-borrado", "TICKET_BORRADO"],
   ["op-ticket-recuperado", "TICKET_RECUPERADO"],
+  ["op-cert-emitido", "CERTIFICADO_EMITIDO"],
+  ["op-cert-anulado", "CERTIFICADO_ANULADO"],
 ]);
 
 function buildOperacion(overrides: Partial<OperacionTicket>): OperacionTicket {
@@ -57,6 +59,23 @@ describe("TicketTimeline", () => {
     const textos = screen.getAllByRole("listitem").map((li) => li.textContent ?? "");
     expect(textos[0]).toContain("Ticket recuperado");
     expect(textos[1]).toContain("Ticket borrado");
+    expect(screen.queryByText("Operación")).not.toBeInTheDocument();
+  });
+
+  it("nombra la emisión y la anulación de un certificado (odd/edilicia-obra-externa, S8)", () => {
+    render(
+      <TicketTimeline
+        operaciones={[
+          buildOperacion({ id: "e", tipoOperacionId: "op-cert-emitido", createdAt: "2026-01-01T10:00:00.000Z" }),
+          buildOperacion({ id: "a", tipoOperacionId: "op-cert-anulado", createdAt: "2026-01-02T10:00:00.000Z" }),
+        ]}
+        tipoOperacionCodigoMap={TIPO_OPERACION_MAP}
+      />,
+    );
+
+    const textos = screen.getAllByRole("listitem").map((li) => li.textContent ?? "");
+    expect(textos[0]).toContain("Certificado anulado");
+    expect(textos[1]).toContain("Certificado emitido");
     expect(screen.queryByText("Operación")).not.toBeInTheDocument();
   });
 

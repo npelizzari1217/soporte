@@ -306,6 +306,7 @@ describe('PrismaTicketCompraRepository — Integration (WU2)', () => {
         estadoAprobacion: 'APROBADO',
         comprado: true, // cantidadRecibida(10) >= cantidad(10)
         entregado: false, // cantidadEntregada(4) < cantidad(10)
+        esServicio: false, // DEFAULT de la columna: el fixture no la declara
       });
     });
   });

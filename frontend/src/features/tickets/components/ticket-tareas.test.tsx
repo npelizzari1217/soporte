@@ -36,6 +36,7 @@ function tarea(overrides: Partial<TareaTicket> = {}): TareaTicket {
     completadaPorId: null,
     completadaPorNombre: null,
     completadaPorApellido: null,
+    peso: 0,
     createdAt: "2026-10-01T10:00:00.000Z",
     ...overrides,
   };
@@ -415,3 +416,214 @@ describe("TicketTareas — solo lectura (odd/ticket-cerrado-solo-lectura, S4)", 
     expect(screen.getByLabelText("Nueva tarea")).toBeInTheDocument();
   });
 });
+
+describe("TicketTareas — peso en un ticket EXTERNA (odd/edilicia-obra-externa, S4, S9)", () => {
+  const LOSA = tarea({ id: "p1", descripcion: "Losa", peso: 60 });
+  const REVOQUE = tarea({ id: "p2", descripcion: "Revoque", orden: 2, peso: 0 });
+
+  function renderExterna(user = responsable, permisos: PermisosPorTipo = CON_MODIFICACION) {
+    mockTareas([LOSA, REVOQUE]);
+    return renderConPermisos(
+      <TicketTareas ticketId={TICKET_ID} asignadoId={RESPONSABLE} tipoId={TIPO} modalidad="EXTERNA" />,
+      { user, permisos },
+    );
+  }
+
+  function capturarPatches(): Record<string, unknown>[] {
+    const bodies: Record<string, unknown>[] = [];
+    server.use(
+      http.patch(`/api/tickets/${TICKET_ID}/tareas/:tareaId/peso`, async ({ request, params }) => {
+        bodies.push({ tareaId: params.tareaId, ...((await request.json()) as Record<string, unknown>) });
+        return HttpResponse.json(REVOQUE);
+      }),
+    );
+    return bodies;
+  }
+
+  async function fijar(descripcion: string, valor: string) {
+    const user = userEvent.setup();
+    const campo = await screen.findByLabelText(`Peso de la tarea ${descripcion}`);
+    await user.clear(campo);
+    if (valor) await user.type(campo, valor);
+    await user.click(within(filaDe(descripcion)).getByRole("button", { name: "Fijar" }));
+  }
+
+  beforeEach(() => vi.mocked(toast.error).mockClear());
+
+  it("muestra la suma de pesos y fija el peso con PATCH .../peso", async () => {
+    const bodies = capturarPatches();
+    renderExterna();
+
+    expect(await screen.findByText(/Pesos asignados: 60 % de 100 %/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Peso de la tarea Revoque")).toHaveValue(0);
+    await fijar("Revoque", "40");
+
+    await waitFor(() => expect(bodies).toEqual([{ tareaId: "p2", peso: 40 }]));
+  });
+
+  it("no deja pasar el tope: con 60 asignados, la otra tarea admite hasta 40", async () => {
+    const bodies = capturarPatches();
+    renderExterna();
+
+    await fijar("Revoque", "41");
+
+    expect(
+      await within(filaDe("Revoque")).findByText(
+        "Las tareas sumarían más del 100 %. Para esta tarea quedan 40 %; baje primero el peso de otras.",
+      ),
+    ).toBeInTheDocument();
+    expect(bodies).toEqual([]);
+  });
+
+  it.each([
+    ["vacío", "", "El peso es requerido"],
+    ["con decimales", "12.5", "El peso es un número entero"],
+  ])("un peso %s no se manda", async (_caso, valor, mensaje) => {
+    const bodies = capturarPatches();
+    renderExterna();
+
+    await fijar("Losa", valor);
+
+    expect(await within(filaDe("Losa")).findByText(mensaje)).toBeInTheDocument();
+    expect(bodies).toEqual([]);
+  });
+
+  it("el 422 del servidor se muestra con su propio mensaje, no con el del técnico", async () => {
+    const mensaje =
+      "Con ese peso, las tareas del ticket sumarían 101 %, por encima del 100 %. Baje primero el peso de otras tareas.";
+    server.use(
+      http.patch(`/api/tickets/${TICKET_ID}/tareas/p2/peso`, () =>
+        HttpResponse.json({ statusCode: 422, message: mensaje, error: "Unprocessable Entity" }, { status: 422 }),
+      ),
+    );
+    renderExterna();
+
+    await fijar("Revoque", "40");
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(mensaje));
+  });
+
+  it("retipear el mismo peso no manda nada", async () => {
+    const bodies = capturarPatches();
+    renderExterna();
+
+    await fijar("Losa", "60");
+
+    await waitFor(() => expect(within(filaDe("Losa")).getByRole("button", { name: "Fijar" })).toBeDisabled());
+    expect(bodies).toEqual([]);
+  });
+
+  it("quien no gestiona las tareas ve el peso como texto, sin control", async () => {
+    renderExterna(buildUser({ sub: TECNICO, rol: "TECNICO", permisos: [] }));
+
+    await screen.findByText("Losa");
+    expect(within(filaDe("Losa")).getByText("Peso: 60 %")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Peso de la tarea Losa")).not.toBeInTheDocument();
+  });
+
+  it("en un ticket INTERNA no hay peso ni suma, aunque las tareas traigan uno", async () => {
+    mockTareas([LOSA, REVOQUE]);
+    renderConPermisos(<TicketTareas ticketId={TICKET_ID} asignadoId={RESPONSABLE} tipoId={TIPO} />, {
+      user: responsable,
+      permisos: CON_MODIFICACION,
+    });
+
+    await screen.findByText("Losa");
+    expect(screen.queryByText(/Pesos asignados/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Peso de la tarea Losa")).not.toBeInTheDocument();
+    expect(screen.queryByText("Peso: 60 %")).not.toBeInTheDocument();
+  });
+});
+
+describe("TicketTareas — tarea certificada (odd/edilicia-obra-externa, S8)", () => {
+  beforeEach(() => vi.mocked(toast.error).mockClear());
+
+  it("el 422 de descompletar una tarea certificada se muestra con el mensaje del servidor", async () => {
+    const user = userEvent.setup();
+    const mensaje = "La tarea «Reinstalar el sistema» está en un certificado vigente: anule el certificado antes de descompletarla.";
+    mockTareas();
+    server.use(
+      http.post(`/api/tickets/${TICKET_ID}/tareas/ta2/descompletar`, () =>
+        HttpResponse.json({ statusCode: 422, message: mensaje, error: "Unprocessable Entity" }, { status: 422 }),
+      ),
+    );
+    renderTareas();
+
+    await screen.findByText("Reinstalar el sistema");
+    await user.click(within(filaDe("Reinstalar el sistema")).getByRole("button", { name: "Descompletar" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(mensaje));
+  });
+
+  it("el 422 de eliminar una tarea certificada se muestra con el mensaje del servidor", async () => {
+    const user = userEvent.setup();
+    const mensaje = "La tarea «Cambiar el disco» está en un certificado vigente: anule el certificado antes de eliminarla.";
+    mockTareas();
+    server.use(
+      http.delete(`/api/tickets/${TICKET_ID}/tareas/ta1`, () =>
+        HttpResponse.json({ statusCode: 422, message: mensaje, error: "Unprocessable Entity" }, { status: 422 }),
+      ),
+    );
+    renderTareas();
+
+    await user.click(await screen.findByRole("button", { name: "Eliminar tarea Cambiar el disco" }));
+    await user.click(screen.getByRole("button", { name: "Eliminar" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(mensaje));
+    expect(toast.error).not.toHaveBeenCalledWith("Ese técnico no puede tomar tareas de este ticket.");
+  });
+
+  it("caso hermano: el 422 de asignar técnico conserva su texto propio", async () => {
+    const user = userEvent.setup();
+    mockTareas();
+    server.use(
+      http.patch(`/api/tickets/${TICKET_ID}/tareas/ta1/tecnico`, () =>
+        HttpResponse.json({ statusCode: 422, message: "El usuario \"x\" no puede...", error: "x" }, { status: 422 }),
+      ),
+    );
+    renderTareas();
+
+    await screen.findByText("Cambiar el disco");
+    await user.selectOptions(screen.getByLabelText("Técnico de la tarea Cambiar el disco"), TECNICO);
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Ese técnico no puede tomar tareas de este ticket."));
+  });
+});
+
+describe("TicketTareas — alta en una obra externa cerrada (odd/edilicia-obra-externa, L36)", () => {
+  const admin = buildUser({ sub: "u-admin", rol: "ADMINISTRADOR", permisos: [] });
+
+  function renderCon(modalidad: "INTERNA" | "EXTERNA", estadoCodigo: string) {
+    mockTareas();
+    return renderConPermisos(
+      <TicketTareas
+        ticketId={TICKET_ID}
+        asignadoId={RESPONSABLE}
+        tipoId={TIPO}
+        modalidad={modalidad}
+        estadoCodigo={estadoCodigo}
+      />,
+      { user: admin, permisos: permisosDeTest({}) },
+    );
+  }
+
+  it("en EXTERNA cerrado no ofrece el alta, ni al administrador, y dice por qué", async () => {
+    renderCon("EXTERNA", "CERRADO");
+
+    await screen.findByText("Cambiar el disco");
+    expect(screen.queryByLabelText("Nueva tarea")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Un ticket con obra externa cerrado no admite tareas nuevas: reábralo antes de agregarlas."),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["INTERNA", "CERRADO"],
+    ["EXTERNA", "EN_PROCESO"],
+  ] as const)("caso hermano: en %s %s el administrador sigue viendo el alta", async (modalidad, estado) => {
+    renderCon(modalidad, estado);
+
+    expect(await screen.findByLabelText("Nueva tarea")).toBeInTheDocument();
+  });
+});
+

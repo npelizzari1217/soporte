@@ -1,7 +1,7 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
-import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import { ModalidadTicket, TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
 import { TicketAsignadoEvent } from '../../../tickets/domain/events/ticket-asignado.event';
 import { NumeradorTicket } from '../../../tickets/domain/services/numerador-ticket.service';
@@ -57,6 +57,8 @@ export interface CrearTicketEdilicioDto {
   ubicacion?: string | null;
   /** Sector del cliente (odd/ubicacion-sector-ticket). Va al ticket, como en cualquier otro módulo. */
   sectorId?: string | null;
+  /** Modalidad de ejecución (odd/edilicia-obra-externa S1). Ausente equivale a `'INTERNA'`. */
+  modalidad?: ModalidadTicket;
   solicitanteId: string;
   clienteId: string;
   autorId: string;
@@ -203,6 +205,7 @@ export class CrearTicketEdilicioUseCase {
         solicitanteId: dto.solicitanteId,
         ubicacion: dto.ubicacion ?? null,
         sectorId: dto.sectorId ?? null,
+        modalidad: dto.modalidad ?? 'INTERNA',
       });
 
       // La regla asigna ANTES del primer `save()`: el ticket nace ASIGNADO.

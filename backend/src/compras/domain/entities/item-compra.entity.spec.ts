@@ -56,6 +56,93 @@ function crearItemAprobado(overrides: Partial<ItemCompraCreateProps> = {}): Item
 }
 
 describe('ItemCompraEntity', () => {
+  describe('ítem de servicio (odd/edilicia-obra-externa, S2)', () => {
+    it('create() deja esServicio en false cuando el alta no lo declara', () => {
+      expect(ItemCompraEntity.create(crearPropsValidas()).esServicio).toBe(false);
+    });
+
+    it('create() conserva esServicio=true', () => {
+      expect(ItemCompraEntity.create(crearPropsValidas({ esServicio: true })).esServicio).toBe(
+        true,
+      );
+    });
+
+    it('marcar como servicio un ítem con insumo falla con ItemServicioConInsumoError, sin mutar', () => {
+      const item = ItemCompraEntity.create(crearPropsValidas({ insumoId: 'insumo-a' }));
+
+      const result = item.actualizar({
+        esServicio: true,
+        descripcion: 'Otra cosa',
+        cantidad: 5,
+        monto: 99,
+        observaciones: 'Nota',
+      });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('ITEM_SERVICIO_CON_INSUMO');
+      expect(item.esServicio).toBe(false);
+      expect(item.descripcion).toBe('Notebook Dell Latitude');
+      expect(item.cantidad).toBe(2);
+      expect(item.monto).toBe(150000);
+      expect(item.observaciones).toBeNull();
+    });
+
+    it('declarar un insumo en un ítem de servicio falla con ItemServicioConInsumoError, sin mutar', () => {
+      const item = ItemCompraEntity.create(crearPropsValidas({ esServicio: true }));
+
+      const result = item.actualizar({ insumoId: 'insumo-a' });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('ITEM_SERVICIO_CON_INSUMO');
+      expect(item.insumoId).toBeNull();
+    });
+
+    it('marcar como servicio y borrar el insumo en el mismo PATCH se acepta', () => {
+      const item = ItemCompraEntity.create(crearPropsValidas({ insumoId: 'insumo-a' }));
+
+      const result = item.actualizar({ esServicio: true, insumoId: null });
+
+      expect(result.isOk()).toBe(true);
+      expect(item.esServicio).toBe(true);
+      expect(item.insumoId).toBeNull();
+    });
+
+    it.each([
+      ['APROBADO', (item: ItemCompraEntity) => item.aprobar('usuario-1')],
+      ['RECHAZADO', (item: ItemCompraEntity) => item.rechazar('usuario-1')],
+    ])(
+      'con el ítem %s, cambiar esServicio falla con ItemCompraCongeladoError, sin mutar',
+      (_estado, decidir) => {
+        const item = ItemCompraEntity.create(crearPropsValidas());
+        decidir(item);
+
+        const result = item.actualizar({ esServicio: true, descripcion: 'Otra cosa' });
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError().code).toBe('ITEM_COMPRA_CONGELADO');
+        expect(item.esServicio).toBe(false);
+        expect(item.descripcion).toBe('Notebook Dell Latitude');
+      },
+    );
+
+    it('con el ítem decidido, reenviar el mismo esServicio no cambia nada y se acepta', () => {
+      const item = crearItemAprobado({ esServicio: true });
+
+      const result = item.actualizar({ esServicio: true, descripcion: 'Otra cosa' });
+
+      expect(result.isOk()).toBe(true);
+      expect(item.descripcion).toBe('Otra cosa');
+    });
+
+    it('desmarcar el servicio se acepta y vuelve a permitir declarar un insumo', () => {
+      const item = ItemCompraEntity.create(crearPropsValidas({ esServicio: true }));
+
+      expect(item.actualizar({ esServicio: false, insumoId: 'insumo-a' }).isOk()).toBe(true);
+      expect(item.esServicio).toBe(false);
+      expect(item.insumoId).toBe('insumo-a');
+    });
+  });
+
   describe('create()', () => {
     it('crea un ítem PENDIENTE con las tres cantidades en 0, las tres fechas null y sin decisión (S4)', () => {
       const item = ItemCompraEntity.create(crearPropsValidas());

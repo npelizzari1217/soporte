@@ -57,6 +57,7 @@ import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
 import * as ComprasErrors from '../../domain/errors/compras.errors';
 import {
   InsumoDeItemNoReasignableError,
+  ItemServicioConInsumoError,
   CantidadOrdenadaExcedeSolicitadaError,
   CantidadOrdenadaRetrocedeError,
   CantidadRecibidaExcedeOrdenadaError,
@@ -354,6 +355,7 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         fechaCotizacion: new Date('2026-08-13'),
         observaciones: null,
         insumoId: null,
+        esServicio: false,
       });
       expect(res.items).toHaveLength(1);
     });
@@ -1084,8 +1086,8 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 30 clases de error (2×409 + 2×404 + 24×422 + 1×400 + 1×403)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(30);
+  it('el catálogo tiene EXACTAMENTE 31 clases de error (2×409 + 2×404 + 25×422 + 1×400 + 1×403)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(31);
   });
 
   const TABLA: Array<[string, () => DomainError, 400 | 403 | 404 | 409 | 422]> = [
@@ -1137,6 +1139,7 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     ['SectorInexistenteError', () => new SectorInexistenteError('sector-1'), 422],
     ['ExportacionDemasiadoGrandeError', () => new ExportacionDemasiadoGrandeError(6000, 5000), 422],
     ['InsumoDeItemNoReasignableError', () => new InsumoDeItemNoReasignableError('item-1'), 422],
+    ['ItemServicioConInsumoError', () => new ItemServicioConInsumoError(), 422],
     // odd/compras-por-tipo (L3): el tipo del body no es elegible, o falta ALTAS sobre él.
     ['TipoTicketDeCompraInvalidoError', () => new TipoTicketDeCompraInvalidoError('tipo-1'), 400],
     [

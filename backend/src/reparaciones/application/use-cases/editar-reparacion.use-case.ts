@@ -2,9 +2,14 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
-import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import {
+  ModalidadTicket,
+  TicketEntity,
+  modalidadEsEditable,
+} from '../../../tickets/domain/entities/ticket.entity';
 import { TicketReprioritizadoEvent } from '../../../tickets/domain/events/ticket-reprioritizado.event';
 import {
+  ModalidadNoEditableError,
   PrioridadNoEncontradaError,
   SectorTicketInexistenteError,
   TicketNoEncontradoError,
@@ -36,6 +41,8 @@ export interface EditarReparacionDto {
   /** Ubicación del ticket: desde odd/ticket-unificado (S1) es una sola, la de `tickets.ubicacion`. */
   ubicacion?: string | null;
   sectorId?: string | null;
+  /** Modalidad de ejecución (odd/edilicia-obra-externa S1). Ausente no toca. */
+  modalidad?: ModalidadTicket;
   /** ROOT (`is_global_admin`): salta la regla "no se empezó a trabajar", nunca el bloqueo por compra. */
   actorEsRoot: boolean;
   /** Permisos por tipo del actor: exige ver el ticket base y `MODIFICACION` sobre su tipo (D5 c). */
@@ -167,6 +174,15 @@ export class EditarReparacionUseCase {
       }
     }
 
+    // odd/edilicia-obra-externa (S1): misma regla que `EditarTicketUseCase`, también para ROOT.
+    if (dto.modalidad !== undefined && dto.modalidad !== ticket.modalidad) {
+      const tareas = await this.tareaRepo.listarPorTicket(ticket.id);
+      const tareasActivas = tareas.filter((t) => !t.isDeleted()).length;
+      if (!modalidadEsEditable(tareasActivas, vinculadas.length)) {
+        return Result.fail(new ModalidadNoEditableError());
+      }
+    }
+
     const cambioPrioridad = dto.prioridadId !== undefined && dto.prioridadId !== ticket.prioridadId;
     ticket.actualizarDatos({
       titulo: dto.titulo,
@@ -174,6 +190,7 @@ export class EditarReparacionUseCase {
       prioridadId: dto.prioridadId,
       ubicacion: dto.ubicacion,
       sectorId: dto.sectorId,
+      modalidad: dto.modalidad,
     });
 
     await this.ticketRepo.save(ticket);

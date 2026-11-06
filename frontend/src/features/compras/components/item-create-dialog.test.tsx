@@ -483,3 +483,43 @@ describe("ItemCreateDialog", () => {
     });
   });
 });
+
+describe("ItemCreateDialog — ítem de servicio (odd/edilicia-obra-externa, S2)", () => {
+  it("sin marcar, el alta manda esServicio=false; marcado, true y sin insumo", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    server.use(
+      http.get("/api/insumos", () => HttpResponse.json([])),
+      http.post(`/api/compras/${COMPRA_ID}/items`, async ({ request }) => {
+        bodies.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json(compraDetalleFixture, { status: 201 });
+      }),
+    );
+    renderWithProviders(<ItemCreateDialog compraId={COMPRA_ID} />, {
+      user: buildUser({ permisos: ["COMPRAS:ALTAS"] }),
+    });
+
+    async function completarYAgregar(marcarServicio: boolean) {
+      const user = await abrirDialog();
+      await user.type(screen.getByLabelText(/descripción/i), "Mano de obra");
+      await user.clear(screen.getByLabelText(/cantidad/i));
+      await user.type(screen.getByLabelText(/cantidad/i), "1");
+      await user.type(screen.getByLabelText(/proveedor/i), "Contratista SA");
+      await user.type(screen.getByLabelText(/fecha de cotización/i), "2026-01-01");
+      const casilla = screen.getByRole("checkbox", { name: /es un servicio/i });
+      expect(casilla).not.toBeChecked();
+      if (marcarServicio) {
+        await user.click(casilla);
+        expect(screen.getByLabelText(/insumo \(opcional\)/i)).toBeDisabled();
+      }
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+      await waitFor(() => expect(screen.queryByLabelText(/descripción/i)).not.toBeInTheDocument());
+    }
+
+    await completarYAgregar(false);
+    expect(bodies[0]).toMatchObject({ esServicio: false });
+
+    await completarYAgregar(true);
+    expect(bodies[1]).toMatchObject({ esServicio: true });
+    expect(bodies[1]).not.toHaveProperty("insumoId");
+  });
+});

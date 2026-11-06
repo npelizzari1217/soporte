@@ -191,6 +191,8 @@ describe('Tramos del técnico — integración por vía de escritura del ticket'
       publisher,
       txRunner,
       new PrismaRelojSlaMarcador(tenantContext),
+      // Los tickets de este spec son INTERNA: la regla de cierre de S10 (odd/edilicia-obra-externa) no aplica.
+      { tareasSinCertificar: async () => 0 },
     );
   }
 

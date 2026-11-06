@@ -8,7 +8,7 @@ import {
 } from './permisos-tipo-ticket';
 
 describe('ACCIONES_TIPO_TICKET', () => {
-  it('enumera las 10 acciones por tipo con los códigos del catálogo actual (D4)', () => {
+  it('enumera las 11 acciones por tipo con los códigos del catálogo actual (D4, y CERTIFICAR de odd/edilicia-obra-externa)', () => {
     expect([...ACCIONES_TIPO_TICKET]).toEqual([
       'LECTURA',
       'VER_TODOS',
@@ -20,6 +20,7 @@ describe('ACCIONES_TIPO_TICKET', () => {
       'OBSERVAR',
       'IMPRESION',
       'BORRADO',
+      'CERTIFICAR',
     ]);
   });
 });
@@ -71,6 +72,14 @@ describe('plantillas por tipo (T9a, L50.4)', () => {
 });
 
 describe('problemaDeFilaDeTipo (T7, S3)', () => {
+  it('CERTIFICAR se concede con Ver y sin Ver no (odd/edilicia-obra-externa, S6)', () => {
+    expect(problemaDeFilaDeTipo(['LECTURA', 'CERTIFICAR'])).toBeNull();
+    expect(problemaDeFilaDeTipo(['CERTIFICAR'])).toEqual({
+      tipo: 'sin-ver',
+      acciones: ['CERTIFICAR'],
+    });
+  });
+
   it('una fila vacía, o con Ver y cualquier otra acción del vocabulario, es válida', () => {
     expect(problemaDeFilaDeTipo([])).toBeNull();
     expect(problemaDeFilaDeTipo(['LECTURA'])).toBeNull();

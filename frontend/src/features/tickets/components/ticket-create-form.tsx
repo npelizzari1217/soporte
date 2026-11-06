@@ -15,6 +15,8 @@ import { Select } from "@/components/ui/select";
 import { crearTicketSchema, type CrearTicketFormValues } from "../schemas";
 import type { CrearTicketDto, Prioridad, TipoTicket } from "../types";
 import type { Sector } from "@/features/sectores/types";
+import { MODALIDAD_POR_DEFECTO } from "../modalidad";
+import { CampoModalidad } from "./campo-modalidad";
 
 export interface TicketCreateFormProps {
   tipos: TipoTicket[];
@@ -30,7 +32,10 @@ export function TicketCreateForm({ tipos, prioridades, sectores, onSubmit, isSub
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<CrearTicketFormValues>({ resolver: zodResolver(crearTicketSchema) });
+  } = useForm<CrearTicketFormValues>({
+    resolver: zodResolver(crearTicketSchema),
+    defaultValues: { modalidad: MODALIDAD_POR_DEFECTO },
+  });
 
   function submit(values: CrearTicketFormValues) {
     // El backend exige @IsUUID en ticketReferenciaId cuando está presente —
@@ -44,6 +49,7 @@ export function TicketCreateForm({ tipos, prioridades, sectores, onSubmit, isSub
       // Mismo criterio que la referencia: el campo vacío no viaja.
       ubicacion: values.ubicacion || undefined,
       sectorId: values.sectorId || undefined,
+      modalidad: values.modalidad,
     });
   }
 
@@ -135,6 +141,8 @@ export function TicketCreateForm({ tipos, prioridades, sectores, onSubmit, isSub
           ))}
         </Select>
       </div>
+
+      <CampoModalidad id="crear-modalidad" registro={register("modalidad")} />
 
       <Button type="submit" isLoading={isSubmitting} className="self-start">
         Crear ticket

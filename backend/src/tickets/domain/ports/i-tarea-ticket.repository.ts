@@ -104,12 +104,22 @@ export interface ITareaTicketRepository {
   /** Persiste la baja lógica solo si la tarea sigue activa. Conserva quién la completó. */
   darDeBajaSiActiva(tarea: TareaTicketEntity): Promise<boolean>;
 
+  /**
+   * `true` si la tarea está en un certificado vigente (odd/edilicia-obra-externa, S8). Se pregunta
+   * dentro de la transacción, con el lock del ticket: emitir y anular toman el mismo lock.
+   */
+  estaCertificada(tareaId: string): Promise<boolean>;
+
+  /** Persiste solo el peso, si la tarea sigue activa (odd/edilicia-obra-externa, S4). */
+  asignarPesoSiActiva(tarea: TareaTicketEntity): Promise<boolean>;
+
   /** Baja lógica por id: setea `deleted_at`. No borra la fila. */
   eliminar(id: string, ahora: Date): Promise<void>;
 
   /**
    * Tareas completadas en el período, agrupadas por quién las completó. Excluye las tareas dadas
-   * de baja y las de tickets dados de baja. Ordenado por cantidad descendente.
+   * de baja, las de tickets dados de baja y las de tickets EXTERNA, que las hace un contratista
+   * (odd/edilicia-obra-externa, S10). Ordenado por cantidad descendente.
    */
   contarCompletadasPorTecnico(
     filtro: FiltroCompletadasPorTecnico,

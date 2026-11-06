@@ -134,6 +134,28 @@ describe('AgregarItemCompraUseCase', () => {
     expect(c.compraRepo.guardarItem).toHaveBeenCalledWith(item);
   });
 
+  it('odd/edilicia-obra-externa S2: persiste esServicio=true, y false si el campo viene ausente', async () => {
+    const conServicio = makeCollaborators();
+    await conServicio.useCase.execute(baseDto({ esServicio: true }));
+    expect(conServicio.compraRepo.guardarItem.mock.calls[0][0].esServicio).toBe(true);
+
+    const sinCampo = makeCollaborators();
+    await sinCampo.useCase.execute(baseDto());
+    expect(sinCampo.compraRepo.guardarItem.mock.calls[0][0].esServicio).toBe(false);
+  });
+
+  it('odd/edilicia-obra-externa S2: un servicio con insumo se rechaza y no persiste nada', async () => {
+    const c = makeCollaborators();
+
+    const result = await c.useCase.execute(baseDto({ esServicio: true, insumoId: INSUMO_ID }));
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('ITEM_SERVICIO_CON_INSUMO');
+    expect(c.compraRepo.guardar).not.toHaveBeenCalled();
+    expect(c.compraRepo.guardarItem).not.toHaveBeenCalled();
+    expect(c.registrarOperacion.registrar).not.toHaveBeenCalled();
+  });
+
   it('S4: agregar sobre una compra APROBADA la vuelve PENDIENTE (T2, cabecera 100% derivada)', async () => {
     const compra = compraActiva();
     const primerItem = compra.agregarItem({

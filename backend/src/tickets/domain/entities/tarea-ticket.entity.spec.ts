@@ -139,6 +139,38 @@ describe('TareaTicketEntity', () => {
     });
   });
 
+  describe('asignarPeso (odd/edilicia-obra-externa, S4, L17)', () => {
+    it('una tarea nueva nace con peso 0', () => {
+      expect(nueva().peso).toBe(0);
+    });
+
+    it('acepta los extremos 0 y 100 sin tocar el registro de completado', () => {
+      const t = nueva();
+      t.completar(OTRO_ID, T0);
+
+      expect(t.asignarPeso(100, T1).isOk()).toBe(true);
+      expect(t.peso).toBe(100);
+      expect(t.asignarPeso(0, T1).isOk()).toBe(true);
+      expect(t.peso).toBe(0);
+      expect(t.completadaPorId).toBe(OTRO_ID);
+    });
+
+    it.each([-1, 101, 12.5])('un peso %s viola la precondición y no cambia nada', (peso) => {
+      const t = nueva();
+
+      expect(() => t.asignarPeso(peso, T1)).toThrow();
+      expect(t.peso).toBe(0);
+    });
+
+    it('una tarea dada de baja no cambia de peso', () => {
+      const t = nueva();
+      t.eliminar(T0);
+
+      expect(t.asignarPeso(30, T1).getError()).toBeInstanceOf(TareaEliminadaError);
+      expect(t.peso).toBe(0);
+    });
+  });
+
   describe('eliminar', () => {
     it('da de baja lógica en la fecha indicada', () => {
       const t = nueva();
@@ -177,6 +209,7 @@ describe('TareaTicketEntity', () => {
         completada: true,
         completadaEn: T0,
         completadaPorId: OTRO_ID,
+        peso: 0,
       },
       'id-fijo',
       T0,

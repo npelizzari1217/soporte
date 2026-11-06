@@ -13,6 +13,9 @@ import {
   TareaAccionNoPermitidaError,
   TareaNoCompletadaError,
   TareaNoEncontradaError,
+  PesoTareaSoloExternoError,
+  PesoTareasExcedeTotalError,
+  TareaCertificadaError,
   TareaTicketNoEditableError,
   TareaYaCompletadaError,
   TecnicoTareaNoElegibleError,
@@ -30,6 +33,7 @@ import { EventoTarea } from '../../domain/policies/estado-por-tareas.policy';
 import { ActorTarea } from '../services/tareas-ticket.reglas';
 import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
 import { AsignarTecnicoTareaUseCase } from './asignar-tecnico-tarea.use-case';
+import { AsignarPesoTareaUseCase } from './asignar-peso-tarea.use-case';
 import { CompletarTareaUseCase } from './completar-tarea.use-case';
 import { CrearTareaTicketUseCase } from './crear-tarea-ticket.use-case';
 import { DescompletarTareaUseCase } from './descompletar-tarea.use-case';
@@ -119,6 +123,7 @@ function armar() {
   const operaciones: OperacionTicketEntity[] = [];
 
   const tareas = new Map<string, TareaTicketEntity>();
+  const certificadas = new Set<string>();
   /** Orden de las llamadas dentro de la transacción (odd/estado-por-tareas, S5-S6). */
   const secuencia: string[] = [];
   const ticketRepo = {
@@ -197,6 +202,9 @@ function armar() {
       return true;
     }),
     asignarTecnicoSiActiva: vi.fn(async (_tarea: TareaTicketEntity) => true),
+    asignarPesoSiActiva: vi.fn(async (_tarea: TareaTicketEntity) => true),
+    // S8 (odd/edilicia-obra-externa): las tareas de `certificadas` están en un certificado vigente.
+    estaCertificada: vi.fn(async (tareaId: string) => certificadas.has(tareaId)),
     darDeBajaSiActiva: vi.fn(async (_tarea: TareaTicketEntity) => true),
   };
   const operacionRepo = {
@@ -315,6 +323,7 @@ function armar() {
     avanzarEstado,
     secuencia,
     bloqueados,
+    certificadas,
     bloqueoRepo,
     ponerEstado,
     crear: new CrearTareaTicketUseCase(
@@ -368,6 +377,14 @@ function armar() {
       ahora,
     ),
     listar: new ListarTareasTicketUseCase(ticketRepo, tareaRepo),
+    ponderar: new AsignarPesoTareaUseCase(
+      ticketRepo,
+      tipoTicketRepo,
+      tareaRepo,
+      txRunner,
+      verificadorEditable,
+      ahora,
+    ),
   };
 }
 
@@ -602,6 +619,93 @@ describe('AsignarTecnicoTareaUseCase', () => {
   });
 });
 
+describe('AsignarPesoTareaUseCase (odd/edilicia-obra-externa, S4, S9)', () => {
+  /** Ticket EXTERNA con tareas de los pesos dados (`t1`, `t2`, ...). */
+  function externoCon(...pesos: number[]) {
+    const deps = armar();
+    deps.tickets.get(TICKET_ID)?.actualizarDatos({ modalidad: 'EXTERNA' });
+    pesos.forEach((peso, i) => {
+      const tarea = deps.sembrarTarea(`t${i + 1}`, { orden: i });
+      tarea.asignarPeso(peso, AHORA);
+    });
+    return deps;
+  }
+  const ponderar = (
+    deps: ReturnType<typeof armar>,
+    peso: number,
+    a: ActorTarea = ACTORES.responsable,
+    tareaId = 't1',
+  ) => deps.ponderar.execute({ ticketId: TICKET_ID, tareaId, actor: a, peso });
+
+  it.each(MATRIZ_GESTION)('actor %s → %s', async (nombre, esperado) => {
+    const deps = externoCon(0);
+    const result = await ponderar(deps, 30, ACTORES[nombre]);
+    verificarRechazo(result, esperado);
+    expect(deps.tareaRepo.asignarPesoSiActiva).toHaveBeenCalledTimes(esperado === 'ok' ? 1 : 0);
+  });
+
+  it('fija el peso y lo persiste dentro de la transacción, con el lock del ticket', async () => {
+    const deps = externoCon(60, 0);
+
+    const result = await ponderar(deps, 40, ACTORES.responsable, 't2');
+
+    expect(result.getValue().peso).toBe(40);
+    expect(deps.ticketRepo.bloquear).toHaveBeenCalledWith(TICKET_ID);
+    expect(deps.tareaRepo.asignarPesoSiActiva).toHaveBeenCalledTimes(1);
+  });
+
+  it('llegar justo a 100 se acepta; pasarse por 1 se rechaza con PesoTareasExcedeTotalError y no escribe', async () => {
+    const deps = externoCon(60, 0);
+
+    expect((await ponderar(deps, 40, ACTORES.responsable, 't2')).isOk()).toBe(true);
+    const error = errorDe(await ponderar(deps, 41, ACTORES.responsable, 't2'));
+
+    expect(error).toBeInstanceOf(PesoTareasExcedeTotalError);
+    expect(error.message).toContain('101 %');
+    expect(deps.tareaRepo.asignarPesoSiActiva).toHaveBeenCalledTimes(1);
+  });
+
+  it('S9: con el ticket en 100, una tarea nueva no puede pesar hasta que se baje otra', async () => {
+    const deps = externoCon(70, 30, 0);
+
+    expect(errorDe(await ponderar(deps, 10, ACTORES.responsable, 't3'))).toBeInstanceOf(
+      PesoTareasExcedeTotalError,
+    );
+    expect((await ponderar(deps, 60, ACTORES.responsable, 't1')).isOk()).toBe(true);
+    expect((await ponderar(deps, 10, ACTORES.responsable, 't3')).isOk()).toBe(true);
+  });
+
+  it('una tarea dada de baja no cuenta en la suma', async () => {
+    const deps = externoCon(80, 0);
+    deps.tareas.get('t1')?.eliminar(AHORA);
+
+    expect((await ponderar(deps, 100, ACTORES.responsable, 't2')).isOk()).toBe(true);
+  });
+
+  it('en un ticket INTERNA se rechaza con PesoTareaSoloExternoError y no escribe', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1');
+
+    expect(errorDe(await ponderar(deps, 30))).toBeInstanceOf(PesoTareaSoloExternoError);
+    expect(deps.tareaRepo.asignarPesoSiActiva).not.toHaveBeenCalled();
+  });
+
+  it('reenviar el mismo peso no escribe', async () => {
+    const deps = externoCon(25);
+
+    expect((await ponderar(deps, 25)).isOk()).toBe(true);
+    expect(deps.tareaRepo.asignarPesoSiActiva).not.toHaveBeenCalled();
+  });
+
+  it('con el ticket bloqueado por una compra se rechaza como el resto de las escrituras de tareas', async () => {
+    const deps = externoCon(0);
+    deps.bloqueados.add(TICKET_ID);
+
+    expect(errorDe(await ponderar(deps, 30))).toBeInstanceOf(TareaTicketNoEditableError);
+    expect(deps.tareaRepo.asignarPesoSiActiva).not.toHaveBeenCalled();
+  });
+});
+
 describe('CompletarTareaUseCase', () => {
   it.each(MATRIZ_COMPLETADO)('actor %s → %s', async (nombre, esperado) => {
     const deps = armar();
@@ -724,6 +828,145 @@ describe('CompletarTareaUseCase', () => {
       });
       expect(errorDe(result)).toBeInstanceOf(TareaNoEncontradaError);
     }
+  });
+});
+
+describe('alta de tareas en un ticket EXTERNA cerrado (odd/edilicia-obra-externa, S10, L36)', () => {
+  const crearComoAdmin = (deps: ReturnType<typeof armar>) =>
+    deps.crear.execute({
+      ticketId: TICKET_ID,
+      actor: ACTORES.administrador,
+      descripcion: 'Tarea agregada después del cierre',
+    });
+
+  it('ni el ADMINISTRADOR agrega una tarea: quedaría sin certificar para siempre', async () => {
+    const deps = armar();
+    deps.tickets.get(TICKET_ID)?.actualizarDatos({ modalidad: 'EXTERNA' });
+    deps.ponerEstado(TICKET_ID, 'CERRADO');
+
+    const error = errorDe(await crearComoAdmin(deps));
+
+    expect(error.code).toBe('TAREA_EN_OBRA_EXTERNA_CERRADA');
+    expect(error.message).toBe(
+      'Un ticket con obra externa cerrado no admite tareas nuevas: reábralo antes de agregarlas.',
+    );
+    expect(deps.tareaRepo.crear).not.toHaveBeenCalled();
+    expect(deps.operaciones).toHaveLength(0);
+  });
+
+  it('caso hermano: en un ticket INTERNA cerrado el ADMINISTRADOR sigue agregando', async () => {
+    const deps = armar();
+    deps.ponerEstado(TICKET_ID, 'CERRADO');
+
+    expect((await crearComoAdmin(deps)).isOk()).toBe(true);
+    expect(deps.tareaRepo.crear).toHaveBeenCalledTimes(1);
+  });
+
+  it('caso hermano: en un ticket EXTERNA abierto se agrega como siempre', async () => {
+    const deps = armar();
+    deps.tickets.get(TICKET_ID)?.actualizarDatos({ modalidad: 'EXTERNA' });
+
+    expect((await crearComoAdmin(deps)).isOk()).toBe(true);
+  });
+});
+
+describe('tarea certificada (odd/edilicia-obra-externa, S8)', () => {
+  /** Ticket EXTERNA con `t1` completada, de peso 100 y en un certificado vigente. */
+  function conTareaCertificada() {
+    const deps = armar();
+    deps.tickets.get(TICKET_ID)?.actualizarDatos({ modalidad: 'EXTERNA' });
+    const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO, completada: true });
+    tarea.asignarPeso(100, AHORA);
+    deps.certificadas.add('t1');
+    return deps;
+  }
+
+  it('no se repesa: TareaCertificadaError y no escribe', async () => {
+    const deps = conTareaCertificada();
+
+    const error = errorDe(
+      await deps.ponderar.execute({
+        ticketId: TICKET_ID,
+        tareaId: 't1',
+        actor: ACTORES.administrador,
+        peso: 50,
+      }),
+    );
+
+    expect(error).toBeInstanceOf(TareaCertificadaError);
+    expect(error.message).toContain('anule el certificado antes de cambiarle el peso');
+    expect(deps.tareaRepo.asignarPesoSiActiva).not.toHaveBeenCalled();
+  });
+
+  it('no se elimina: TareaCertificadaError, sin baja ni historial', async () => {
+    const deps = conTareaCertificada();
+
+    const error = errorDe(
+      await deps.eliminar.execute({
+        ticketId: TICKET_ID,
+        tareaId: 't1',
+        actor: ACTORES.administrador,
+      }),
+    );
+
+    expect(error).toBeInstanceOf(TareaCertificadaError);
+    expect(error.message).toContain('antes de eliminarla');
+    expect(deps.tareaRepo.darDeBajaSiActiva).not.toHaveBeenCalled();
+    expect(deps.operaciones).toHaveLength(0);
+  });
+
+  it('no se descompleta: TareaCertificadaError, sin escritura ni avance de estado', async () => {
+    const deps = conTareaCertificada();
+
+    const error = errorDe(
+      await deps.descompletar.execute({
+        clienteId: CLIENTE_ID,
+        ticketId: TICKET_ID,
+        tareaId: 't1',
+        actor: ACTORES.administrador,
+      }),
+    );
+
+    expect(error).toBeInstanceOf(TareaCertificadaError);
+    expect(error.message).toContain('antes de descompletarla');
+    expect(deps.tareaRepo.descompletarSiCompletada).not.toHaveBeenCalled();
+    expect(deps.avanzarEstado.aplicar).not.toHaveBeenCalled();
+    expect(deps.operaciones).toHaveLength(0);
+  });
+
+  it('caso hermano: sin certificado vigente, las tres siguen funcionando', async () => {
+    const deps = conTareaCertificada();
+    deps.certificadas.delete('t1');
+
+    expect(
+      (
+        await deps.ponderar.execute({
+          ticketId: TICKET_ID,
+          tareaId: 't1',
+          actor: ACTORES.administrador,
+          peso: 50,
+        })
+      ).isOk(),
+    ).toBe(true);
+    expect(
+      (
+        await deps.descompletar.execute({
+          clienteId: CLIENTE_ID,
+          ticketId: TICKET_ID,
+          tareaId: 't1',
+          actor: ACTORES.administrador,
+        })
+      ).isOk(),
+    ).toBe(true);
+    expect(
+      (
+        await deps.eliminar.execute({
+          ticketId: TICKET_ID,
+          tareaId: 't1',
+          actor: ACTORES.administrador,
+        })
+      ).isOk(),
+    ).toBe(true);
   });
 });
 
@@ -900,6 +1143,21 @@ describe('EliminarTareaUseCase', () => {
 });
 
 describe('ListarTareasTicketUseCase', () => {
+  it('en un ticket EXTERNA el avance es la suma de los pesos de las completadas activas (S3)', async () => {
+    const deps = armar();
+    deps.tickets.get(TICKET_ID)?.actualizarDatos({ modalidad: 'EXTERNA' });
+    deps.sembrarTarea('t1', { completada: true }).asignarPeso(30, AHORA);
+    deps.sembrarTarea('t2').asignarPeso(50, AHORA);
+    const baja = deps.sembrarTarea('t3', { completada: true });
+    baja.asignarPeso(20, AHORA);
+    baja.eliminar(AHORA);
+
+    const result = await deps.listar.execute(listado(TICKET_ID, TECNICO, { [TIPO_ID]: VER }));
+
+    // Con la fórmula INTERNA daría 50: el assert distingue que se pasó la modalidad.
+    expect(result.getValue().avance).toEqual({ total: 2, completadas: 1, porcentaje: 30 });
+  });
+
   it('devuelve las tareas activas con el avance sobre las activas', async () => {
     const deps = armar();
     deps.sembrarTarea('t1', { completada: true });

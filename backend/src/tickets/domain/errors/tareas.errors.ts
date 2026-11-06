@@ -68,6 +68,71 @@ export class TecnicoTareaNoElegibleError extends DomainError {
 }
 
 /**
+ * El peso pedido dejaría la suma de las tareas activas del ticket por encima de 100 %
+ * (odd/edilicia-obra-externa, S9, L16). El sistema no redistribuye: el usuario baja a mano el peso
+ * de otras tareas antes. → HTTP 422.
+ */
+export class PesoTareasExcedeTotalError extends DomainError {
+  readonly code = 'PESO_TAREAS_EXCEDE_TOTAL';
+
+  constructor(sumaResultante: number) {
+    super(
+      `Con ese peso, las tareas del ticket sumarían ${sumaResultante} %, por encima del 100 %. ` +
+        'Baje primero el peso de otras tareas.',
+    );
+  }
+}
+
+/**
+ * El peso de las tareas solo se usa en tickets con modalidad EXTERNA (odd/edilicia-obra-externa,
+ * S4): en uno interno no mide nada y guardarlo dejaría un dato sin significado. → HTTP 422.
+ */
+export class PesoTareaSoloExternoError extends DomainError {
+  readonly code = 'PESO_TAREA_SOLO_EXTERNO';
+
+  constructor() {
+    super('El peso de las tareas solo se usa en tickets con modalidad externa.');
+  }
+}
+
+/**
+ * En un ticket EXTERNA cerrado no entra una tarea nueva, ni para el ADMINISTRADOR
+ * (odd/edilicia-obra-externa, S10, L36): no se podría certificar. → HTTP 422.
+ */
+export class TareaEnObraExternaCerradaError extends DomainError {
+  readonly code = 'TAREA_EN_OBRA_EXTERNA_CERRADA';
+
+  constructor() {
+    super(
+      'Un ticket con obra externa cerrado no admite tareas nuevas: reábralo antes de agregarlas.',
+    );
+  }
+}
+
+/** Lo que se intentó hacer con una tarea certificada (S8). */
+export type CambioSobreTareaCertificada = 'repesar' | 'eliminar' | 'descompletar';
+
+const TEXTO_CAMBIO: Record<CambioSobreTareaCertificada, string> = {
+  repesar: 'cambiarle el peso',
+  eliminar: 'eliminarla',
+  descompletar: 'descompletarla',
+};
+
+/**
+ * La tarea está en un certificado vigente (odd/edilicia-obra-externa, S8): no se repesa, borra ni
+ * descompleta sin anular antes el certificado. → HTTP 422.
+ */
+export class TareaCertificadaError extends DomainError {
+  readonly code = 'TAREA_CERTIFICADA';
+
+  constructor(descripcion: string, cambio: CambioSobreTareaCertificada) {
+    super(
+      `La tarea «${descripcion}» está en un certificado vigente: anule el certificado antes de ${TEXTO_CAMBIO[cambio]}.`,
+    );
+  }
+}
+
+/**
  * El ticket está bloqueado por una compra en curso: sus tareas son de solo lectura (ni crear,
  * completar, descompletar, eliminar ni asignar técnico), para cualquier actor
  * (odd/ticket-cerrado-solo-lectura, S2; odd/ticket-unificado, S5). Un ticket RESUELTO, CERRADO o
