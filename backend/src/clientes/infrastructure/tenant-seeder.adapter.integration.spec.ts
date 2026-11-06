@@ -147,10 +147,13 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
     expect(prioridades.every((p) => p.slaActivo)).toBe(true);
 
     const tipoOperacion = await verifyClient.tipoOperacion.findMany({ orderBy: { nombre: 'asc' } });
-    expect(tipoOperacion).toHaveLength(12);
+    expect(tipoOperacion).toHaveLength(14);
     expect(tipoOperacion.map((t) => t.codigo).sort()).toEqual(
       [
         'CAMBIO_ESTADO',
+        // Certificados de avance (odd/edilicia-obra-externa, T3b).
+        'CERTIFICADO_ANULADO',
+        'CERTIFICADO_EMITIDO',
         'COMENTARIO',
         'ASIGNACION',
         'ADJUNTO',
@@ -214,7 +217,7 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
 
     expect(estados).toHaveLength(7);
     expect(prioridades).toHaveLength(4);
-    expect(tipoOperacion).toHaveLength(12);
+    expect(tipoOperacion).toHaveLength(14);
     expect(tiposTicket).toHaveLength(4);
     expect(familias).toHaveLength(11);
     expect(unidades).toHaveLength(4); // issue #155
