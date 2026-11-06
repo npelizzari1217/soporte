@@ -21,6 +21,7 @@ import { PrismaTareaTicketRepository } from '../../infrastructure/persistence/pr
 import { PrismaTicketRepository } from '../../infrastructure/persistence/prisma/prisma-ticket.repository';
 import { PrismaTipoOperacionRepository } from '../../infrastructure/persistence/prisma/prisma-tipo-operacion.repository';
 import { AlcanceActorTicket } from '../services/visibilidad-ticket';
+import { ConsultaCierreExterno } from '../services/cierre-externo';
 import { AnularCertificadoUseCase } from './anular-certificado.use-case';
 import { EmitirCertificadoUseCase } from './emitir-certificado.use-case';
 import { ListarCertificadosUseCase } from './listar-certificados.use-case';
@@ -525,6 +526,32 @@ describe('Certificados de avance (T3b, tenant efímero)', () => {
       }),
     );
     expect(await enTenant(() => tareaRepo.estaCertificada(tareas[0]))).toBe(false);
+  });
+
+  it('S10: cuenta las tareas activas sin certificado vigente (borradas y anuladas incluidas en la cuenta correcta)', async () => {
+    const consulta = new ConsultaCierreExterno(tareaRepo, certificadoRepo);
+    const { ticketId, tareas } = await ticketCon([50, 30, 20], [0, 1, 2]);
+    expect(await enTenant(() => consulta.tareasSinCertificar(ticketId))).toBe(3);
+
+    const certificado = (
+      await enTenant(() =>
+        emitir.execute({ ticketId, alcance: CON_CERTIFICAR(), tareaIds: [tareas[0], tareas[1]] }),
+      )
+    ).getValue();
+    expect(await enTenant(() => consulta.tareasSinCertificar(ticketId))).toBe(1);
+
+    await client.tareaTicket.update({ where: { id: tareas[2] }, data: { deletedAt: new Date() } });
+    expect(await enTenant(() => consulta.tareasSinCertificar(ticketId))).toBe(0);
+
+    await enTenant(() =>
+      anular.execute({
+        ticketId,
+        certificadoId: certificado.id,
+        alcance: ADMINISTRADOR,
+        motivo: 'x',
+      }),
+    );
+    expect(await enTenant(() => consulta.tareasSinCertificar(ticketId))).toBe(2);
   });
 
   it('listar exige ver el ticket: sin LECTURA es 404', async () => {

@@ -21,7 +21,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { formatearInstante } from "@/shared/lib/formato-fecha";
-import { useAnularCertificado, useCertificados, useEmitirCertificado } from "../hooks/use-certificados";
+import {
+  useAnularCertificado,
+  useCertificados,
+  useDescargarPdfCertificado,
+  useEmitirCertificado,
+} from "../hooks/use-certificados";
 import { useTareasTicket } from "../hooks/use-tareas-ticket";
 import { anularCertificadoSchema, PESO_TAREAS_MAX, type AnularCertificadoFormValues } from "../schemas";
 import type { CertificadoAvance } from "../types";
@@ -32,6 +37,8 @@ export interface TicketCertificadosProps {
   puedeCertificar: boolean;
   /** Código del estado del ticket; en CERRADO o CANCELADO no se emite ni se anula (L26). */
   estadoCodigo: string | undefined;
+  /** `IMPRESION` sobre el tipo: descargar el PDF de un certificado (S7), como la ficha del ticket. */
+  puedeImprimir: boolean;
 }
 
 const ESTADOS_SIN_CERTIFICACION = new Set(["CERRADO", "CANCELADO"]);
@@ -44,7 +51,12 @@ function nombre(nombrePila: string | null, apellido: string | null): string {
  * @param props Ver `TicketCertificadosProps`.
  * @returns La sección de certificados.
  */
-export function TicketCertificados({ ticketId, puedeCertificar, estadoCodigo }: TicketCertificadosProps) {
+export function TicketCertificados({
+  ticketId,
+  puedeCertificar,
+  estadoCodigo,
+  puedeImprimir,
+}: TicketCertificadosProps) {
   const certificadosQuery = useCertificados(ticketId);
   const tareasQuery = useTareasTicket(ticketId);
   const emitir = useEmitirCertificado(ticketId);
@@ -95,6 +107,7 @@ export function TicketCertificados({ ticketId, puedeCertificar, estadoCodigo }: 
               ticketId={ticketId}
               certificado={certificado}
               puedeAnular={puedeCertificar && !cerrado}
+              puedeImprimir={puedeImprimir}
             />
           ))}
         </ul>
@@ -153,9 +166,11 @@ interface FilaCertificadoProps {
   ticketId: string;
   certificado: CertificadoAvance;
   puedeAnular: boolean;
+  puedeImprimir: boolean;
 }
 
-function FilaCertificado({ ticketId, certificado, puedeAnular }: FilaCertificadoProps) {
+function FilaCertificado({ ticketId, certificado, puedeAnular, puedeImprimir }: FilaCertificadoProps) {
+  const descargar = useDescargarPdfCertificado(ticketId);
   return (
     <li className="flex flex-col gap-1 rounded-lg border border-border p-2" aria-label={`Certificado N.º ${certificado.numero}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -167,7 +182,22 @@ function FilaCertificado({ ticketId, certificado, puedeAnular }: FilaCertificado
             {certificado.vigente ? "Vigente" : "Anulado"}
           </Badge>
         </div>
-        {certificado.vigente && puedeAnular && <AnularCertificadoDialog ticketId={ticketId} certificado={certificado} />}
+        <div className="flex items-center gap-1">
+          {puedeImprimir && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              isLoading={descargar.isPending}
+              onClick={() => descargar.mutate(certificado)}
+            >
+              Descargar PDF
+            </Button>
+          )}
+          {certificado.vigente && puedeAnular && (
+            <AnularCertificadoDialog ticketId={ticketId} certificado={certificado} />
+          )}
+        </div>
       </div>
       <span className="text-xs text-muted-foreground">
         Emitido el {formatearInstante(certificado.emitidoEn)} por{" "}

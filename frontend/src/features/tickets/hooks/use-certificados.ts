@@ -13,7 +13,8 @@
  * anulación. Los rechazos del backend ya vienen en lenguaje del usuario: `notifyError` los muestra.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "@/shared/api/client";
+import { apiFetch, apiFetchBlob } from "@/shared/api/client";
+import { dispararDescarga, nombreDesdeContentDisposition } from "@/shared/lib/descarga";
 import { notifyError, notifySuccess } from "@/shared/lib/toast";
 import type { CertificadoAvance } from "../types";
 
@@ -87,3 +88,25 @@ export function useAnularCertificado(ticketId: string) {
     onError: notifyError,
   });
 }
+
+/**
+ * Descarga el PDF de un certificado (`GET .../certificados/:certificadoId/pdf`, S7): la salida hacia
+ * administración. Se modela como mutación porque lo dispara el usuario y no se cachea, igual que la
+ * ficha PDF del ticket.
+ *
+ * @param ticketId Id del ticket.
+ * @returns La mutación; recibe el certificado.
+ */
+export function useDescargarPdfCertificado(ticketId: string) {
+  return useMutation({
+    mutationFn: async (certificado: { id: string; numero: number }): Promise<void> => {
+      const archivo = await apiFetchBlob(`tickets/${ticketId}/certificados/${certificado.id}/pdf`);
+      dispararDescarga(
+        archivo.blob,
+        nombreDesdeContentDisposition(archivo.contentDisposition) ?? `certificado-${certificado.numero}.pdf`,
+      );
+    },
+    onError: notifyError,
+  });
+}
+

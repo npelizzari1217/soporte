@@ -1,3 +1,4 @@
+import { logoParaPdf } from '../services/logo-pdf';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { diaArgentinoCsv, fechaHoraCsv } from '../../../shared/infrastructure/csv/csv';
 import { VerLogoClienteUseCase } from '../../../clientes/application/use-cases/ver-logo-cliente.use-case';
@@ -23,7 +24,6 @@ import {
 import { AccionSobreTipoNoPermitidaError } from '../../../tickets/domain/errors/tickets.errors';
 import {
   EventoHistorialPdf,
-  LogoPdf,
   SoportePdf,
   TareasPdf,
   TicketPdfVista,
@@ -48,11 +48,6 @@ export interface GenerarPdfTicketResult {
   /** `ticket-<numero>.pdf`. */
   nombreArchivo: string;
 }
-
-const MIME_LOGO: Readonly<Record<string, LogoPdf['formato']>> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpeg',
-};
 
 const CODIGO_COMENTARIO = 'COMENTARIO';
 const CODIGO_CAMBIO_ESTADO = 'CAMBIO_ESTADO';
@@ -131,7 +126,7 @@ export class GenerarPdfTicketUseCase {
       this.tipoTicketRepo.findById(ticket.tipoId),
       this.ticketSoporteRepo.findByTicketId(ticket.id),
       this.tareaRepo.listarPorTicket(ticket.id),
-      this.resolverLogo(dto.clienteId),
+      logoParaPdf(this.verLogoCliente, dto.clienteId),
     ]);
     // El repositorio ya devuelve solo las activas por `orden`; se reasegura acá por si cambia.
     const tareasActivas = tareas
@@ -214,15 +209,6 @@ export class GenerarPdfTicketUseCase {
   }
 
   /** Solo png/jpeg se embeben; webp, sin logo o fallo de lectura → `null` (se imprime el nombre). */
-  private async resolverLogo(clienteId: string): Promise<LogoPdf | null> {
-    const resultado = await this.verLogoCliente.execute(clienteId);
-    if (resultado.isFail()) {
-      return null;
-    }
-    const { buffer, mimeType } = resultado.getValue();
-    const formato = MIME_LOGO[mimeType.toLowerCase()];
-    return formato ? { buffer, formato } : null;
-  }
 
   private async armarSoporte(
     soporte: Awaited<ReturnType<ITicketSoporteRepository['findByTicketId']>>,

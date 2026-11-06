@@ -154,3 +154,55 @@ describe('PdfkitGeneradorPdfTicket', () => {
     expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });
 });
+
+describe('PdfkitGeneradorPdfTicket.generarCertificado (odd/edilicia-obra-externa, S7)', () => {
+  const vistaCertificado = (
+    anulacion: { por: string; en: string; motivo: string } | null = null,
+  ): import('../domain/certificado-pdf-vista').CertificadoPdfVista => ({
+    cliente: { nombre: 'Colegio Norte', logo: null },
+    ticket: {
+      numero: 'EDI-2026-00007',
+      titulo: 'Techo del gimnasio',
+      tipo: 'Edilicia',
+      ubicacion: 'Gimnasio',
+    },
+    numero: 2,
+    porcentaje: 35,
+    acumuladoVigente: 55,
+    emitidoPor: 'Carla Gómez',
+    emitidoEn: '02/11/2026 13:00',
+    anulacion,
+    tareas: [
+      { descripcion: 'Losa', peso: 20 },
+      { descripcion: 'Membrana', peso: 15 },
+    ],
+    generadoEl: '06/11/2026 10:00',
+  });
+
+  it('imprime el número, el porcentaje, el emisor, el acumulado y cada tarea con su peso copiado', async () => {
+    const pdf = await generador.generarCertificado(vistaCertificado());
+
+    expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    const texto = textoDePdf(pdf);
+    expect(texto).toContain('Certificado de avance de obra N.º 2');
+    expect(texto).toContain('35 %');
+    expect(texto).toContain('02/11/2026 13:00 por Carla Gómez');
+    expect(texto).toContain('55 % del ticket');
+    expect(texto).toContain('Losa');
+    expect(texto).toContain('Membrana');
+    expect(texto).toContain('Colegio Norte');
+    expect(texto).not.toContain('ANULADO');
+  });
+
+  it('un certificado anulado lleva la marca y el motivo', async () => {
+    const texto = textoDePdf(
+      await generador.generarCertificado(
+        vistaCertificado({ por: 'Ana Paz', en: '03/11/2026 10:00', motivo: 'Se cargó mal' }),
+      ),
+    );
+
+    expect(texto).toContain('ANULADO');
+    expect(texto).toContain('no corresponde pagar este certificado');
+    expect(texto).toContain('Motivo: Se cargó mal');
+  });
+});

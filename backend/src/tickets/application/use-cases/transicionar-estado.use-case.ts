@@ -1,3 +1,5 @@
+import { ConsultaCierreExterno } from '../services/cierre-externo';
+import { TicketExternoConTareasSinCertificarError } from '../../domain/errors/certificados.errors';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
@@ -125,6 +127,7 @@ export class TransicionarEstadoUseCase {
     private readonly eventPublisher: IDomainEventPublisher,
     private readonly txRunner: ITenantTransactionRunner,
     private readonly relojMarcador: IRelojSlaMarcador,
+    private readonly cierreExterno: Pick<ConsultaCierreExterno, 'tareasSinCertificar'>,
   ) {}
 
   async execute(dto: TransicionarEstadoDto): Promise<Result<TicketEntity, DomainError>> {
@@ -227,6 +230,15 @@ export class TransicionarEstadoUseCase {
 
     if (!arcoNormal && !saltoCorrectivo) {
       return Result.fail(new TransicionInvalidaError(estadoActual.codigo, estadoDestino.codigo));
+    }
+
+    // S10 (odd/edilicia-obra-externa): un ticket EXTERNA no se cierra con tareas sin certificar. Vale
+    // para todos, ROOT y flujos de sistema incluidos: es coherencia de datos, no un permiso.
+    if (estadoDestino.codigo === 'CERRADO' && ticket.modalidad === 'EXTERNA') {
+      const sinCertificar = await this.cierreExterno.tareasSinCertificar(ticket.id);
+      if (sinCertificar > 0) {
+        return Result.fail(new TicketExternoConTareasSinCertificarError(sinCertificar));
+      }
     }
 
     const tipoOperacionId = await this.tipoOperacionRepo.findIdByCodigo('CAMBIO_ESTADO');

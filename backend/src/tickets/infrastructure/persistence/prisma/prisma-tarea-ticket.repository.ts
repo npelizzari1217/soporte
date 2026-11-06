@@ -164,6 +164,9 @@ export class PrismaTareaTicketRepository implements ITareaTicketRepository {
         ...(filtro.completadaPorId !== undefined && { completadaPorId: filtro.completadaPorId }),
         ticket: {
           deletedAt: null,
+          // S10 (odd/edilicia-obra-externa): las tareas de una obra externa las hace un contratista,
+          // no un técnico propio; no suman en esta métrica.
+          modalidad: 'INTERNA',
           ...(filtro.cicloId !== undefined && { cicloId: filtro.cicloId }),
           // Mismo alcance por tipo que el resto del dashboard (odd/permisos-por-tipo-ticket, D5 e).
           ...(filtro.alcance !== undefined && { AND: [whereAlcanceListado(filtro.alcance)] }),

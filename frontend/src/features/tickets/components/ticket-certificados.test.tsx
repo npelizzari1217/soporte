@@ -79,9 +79,14 @@ function mockBackend(tareas: TareaTicket[], certificados: CertificadoAvance[]) {
   return { posts };
 }
 
-function render(puedeCertificar = true, estadoCodigo = "EN_PROCESO") {
+function render(puedeCertificar = true, estadoCodigo = "EN_PROCESO", puedeImprimir = false) {
   return renderWithProviders(
-    <TicketCertificados ticketId={TICKET_ID} puedeCertificar={puedeCertificar} estadoCodigo={estadoCodigo} />,
+    <TicketCertificados
+      ticketId={TICKET_ID}
+      puedeCertificar={puedeCertificar}
+      estadoCodigo={estadoCodigo}
+      puedeImprimir={puedeImprimir}
+    />,
     { user: buildUser({ permisos: [] }) },
   );
 }
@@ -301,6 +306,37 @@ describe("TicketCertificados — cobertura de reglas (S5, S8, L26)", () => {
     await user.click(screen.getByRole("button", { name: "Anular" }));
 
     expect(within(await screen.findByRole("dialog")).getByLabelText("Motivo")).toHaveValue("");
+  });
+});
+
+describe("TicketCertificados — PDF (S7)", () => {
+  it("con IMPRESION ofrece descargar el PDF de cada certificado y lo pide a su ruta", async () => {
+    const user = userEvent.setup();
+    let pedido: string | null = null;
+    mockBackend([LOSA, REVOQUE, PINTURA], [certificado()]);
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}/certificados/c1/pdf`, ({ request }) => {
+        pedido = new URL(request.url).pathname;
+        return new HttpResponse(new Uint8Array([37, 80, 68, 70]), {
+          headers: { "Content-Type": "application/pdf", "Content-Disposition": 'attachment; filename="c.pdf"' },
+        });
+      }),
+    );
+    URL.createObjectURL = vi.fn(() => "blob:x");
+    URL.revokeObjectURL = vi.fn();
+    render(false, "EN_PROCESO", true);
+
+    await user.click(await screen.findByRole("button", { name: "Descargar PDF" }));
+
+    await waitFor(() => expect(pedido).toBe(`/api/tickets/${TICKET_ID}/certificados/c1/pdf`));
+  });
+
+  it("sin IMPRESION no ofrece el PDF", async () => {
+    mockBackend([LOSA, REVOQUE, PINTURA], [certificado()]);
+    render(true, "EN_PROCESO", false);
+
+    await screen.findByText("Certificado N.º 1 · 20 %");
+    expect(screen.queryByRole("button", { name: "Descargar PDF" })).not.toBeInTheDocument();
   });
 });
 

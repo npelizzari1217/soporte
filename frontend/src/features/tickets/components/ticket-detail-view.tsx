@@ -288,7 +288,12 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
           <h2 id="certificados-titulo" className="mb-4 text-sm font-semibold text-foreground">
             Certificados de avance
           </h2>
-          <TicketCertificados ticketId={ticket.id} puedeCertificar={puede("CERTIFICAR")} estadoCodigo={estadoCodigo} />
+          <TicketCertificados
+            ticketId={ticket.id}
+            puedeCertificar={puede("CERTIFICAR")}
+            estadoCodigo={estadoCodigo}
+            puedeImprimir={puede("IMPRESION")}
+          />
         </section>
       )}
 

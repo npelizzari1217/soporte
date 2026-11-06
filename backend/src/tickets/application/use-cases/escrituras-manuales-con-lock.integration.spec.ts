@@ -298,6 +298,8 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
       eventPublisher,
       txRunner,
       relojMarcador,
+      // Los tickets de este spec son INTERNA: la regla de cierre de S10 (odd/edilicia-obra-externa) no aplica.
+      { tareasSinCertificar: async () => 0 },
     );
 
     const resultado = await enTenant(() =>

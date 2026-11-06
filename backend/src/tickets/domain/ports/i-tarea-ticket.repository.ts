@@ -118,7 +118,8 @@ export interface ITareaTicketRepository {
 
   /**
    * Tareas completadas en el período, agrupadas por quién las completó. Excluye las tareas dadas
-   * de baja y las de tickets dados de baja. Ordenado por cantidad descendente.
+   * de baja, las de tickets dados de baja y las de tickets EXTERNA, que las hace un contratista
+   * (odd/edilicia-obra-externa, S10). Ordenado por cantidad descendente.
    */
   contarCompletadasPorTecnico(
     filtro: FiltroCompletadasPorTecnico,

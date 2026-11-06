@@ -26,6 +26,8 @@ import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { toHttpException } from '../../../tickets/interface/controllers/tickets.controller';
 import { GenerarPdfTicketUseCase } from '../../application/use-cases/generar-pdf-ticket.use-case';
+import { GenerarPdfCertificadoUseCase } from '../../application/use-cases/generar-pdf-certificado.use-case';
+import { toHttpExceptionCertificados } from '../../../tickets/interface/controllers/certificados.controller';
 import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
 
 /** Lo único que este controller necesita de la respuesta HTTP: escribir headers. */
@@ -39,6 +41,7 @@ export class TicketPdfController {
   constructor(
     private readonly generarPdfTicketUseCase: GenerarPdfTicketUseCase,
     private readonly alcances: CargadorAlcanceTicket,
+    private readonly generarPdfCertificadoUseCase: GenerarPdfCertificadoUseCase,
   ) {}
 
   /**
@@ -69,6 +72,38 @@ export class TicketPdfController {
     res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
     // El navegador no puede leer un header que no esté expuesto por CORS, y
     // sin esto el frontend no tiene de dónde sacar el nombre del archivo.
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    return new StreamableFile(buffer);
+  }
+
+  /**
+   * GET /tickets/:id/certificados/:certificadoId/pdf — el certificado de avance como PDF, la salida
+   * hacia administración (odd/edilicia-obra-externa, S7). Mismo acceso que la ficha del ticket.
+   * @returns 200 + el PDF como descarga (`certificado-<numero ticket>-<numero>.pdf`)
+   * @throws 403 ve el ticket sin `IMPRESION` sobre su tipo
+   * @throws 404 ticket que el actor no ve, o certificado que no es de ese ticket
+   */
+  @Get(':id/certificados/:certificadoId/pdf')
+  async pdfCertificado(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('certificadoId') certificadoId: string,
+    @Res({ passthrough: true }) res: RespuestaConHeaders,
+  ): Promise<StreamableFile> {
+    const result = await this.generarPdfCertificadoUseCase.execute({
+      ticketId: id,
+      certificadoId,
+      ...(await this.alcances.cargar(user)),
+      clienteId: user.cliente_id ?? '',
+      clienteNombre: user.cliente_nombre ?? '',
+    });
+    if (result.isFail()) {
+      throw toHttpExceptionCertificados(result.getError());
+    }
+    const { buffer, nombreArchivo } = result.getValue();
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
     return new StreamableFile(buffer);
   }

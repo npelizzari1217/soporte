@@ -54,6 +54,21 @@ export class CertificacionTicketCerradoError extends DomainError {
   }
 }
 
+/**
+ * Un ticket EXTERNA no se cierra con tareas sin certificar (S10). → HTTP 422.
+ */
+export class TicketExternoConTareasSinCertificarError extends DomainError {
+  readonly code = 'TICKET_EXTERNO_CON_TAREAS_SIN_CERTIFICAR';
+
+  constructor(cantidad: number) {
+    super(
+      cantidad === 1
+        ? 'El ticket tiene 1 tarea sin certificar: certifíquela antes de cerrarlo.'
+        : `El ticket tiene ${cantidad} tareas sin certificar: certifíquelas antes de cerrarlo.`,
+    );
+  }
+}
+
 /** El certificado no existe o no es de este ticket. → HTTP 404. */
 export class CertificadoNoEncontradoError extends DomainError {
   readonly code = 'CERTIFICADO_NO_ENCONTRADO';

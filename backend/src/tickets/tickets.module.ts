@@ -132,6 +132,7 @@ import {
   ICertificadoAvanceRepository,
 } from './domain/ports/i-certificado-avance.repository';
 import { ListarCertificadosUseCase } from './application/use-cases/listar-certificados.use-case';
+import { ConsultaCierreExterno } from './application/services/cierre-externo';
 import { EmitirCertificadoUseCase } from './application/use-cases/emitir-certificado.use-case';
 import { AnularCertificadoUseCase } from './application/use-cases/anular-certificado.use-case';
 import { CalendarioLaboralModule } from '../calendario-laboral/calendario-laboral.module';
@@ -244,6 +245,15 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
     { provide: USUARIO_MASTER_CHECKER, useClass: UsuarioMasterChecker },
     // odd/edilicia-obra-externa T3b: certificados de avance de obra.
     { provide: CERTIFICADO_AVANCE_REPOSITORY, useClass: PrismaCertificadoAvanceRepository },
+    {
+      // S10: un ticket EXTERNA no se cierra con tareas sin certificar.
+      provide: ConsultaCierreExterno,
+      useFactory: (
+        tareaRepo: ITareaTicketRepository,
+        certificadoRepo: ICertificadoAvanceRepository,
+      ): ConsultaCierreExterno => new ConsultaCierreExterno(tareaRepo, certificadoRepo),
+      inject: [TAREA_TICKET_REPOSITORY, CERTIFICADO_AVANCE_REPOSITORY],
+    },
     {
       provide: ListarCertificadosUseCase,
       useFactory: (
@@ -569,6 +579,7 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
         eventPublisher: IDomainEventPublisher,
         txRunner: ITenantTransactionRunner,
         relojMarcador: IRelojSlaMarcador,
+        cierreExterno: ConsultaCierreExterno,
       ) =>
         new TransicionarEstadoUseCase(
           ticketRepo,
@@ -580,6 +591,7 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
           eventPublisher,
           txRunner,
           relojMarcador,
+          cierreExterno,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -591,6 +603,7 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
         DOMAIN_EVENT_PUBLISHER,
         TENANT_TX_RUNNER,
         RELOJ_SLA_MARCADOR,
+        ConsultaCierreExterno,
       ],
     },
     {
@@ -1127,6 +1140,8 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
     // odd/tareas-con-tecnico: las tareas las leen también el listado de reparaciones, el dashboard
     // y el PDF, que viven en otros módulos.
     TAREA_TICKET_REPOSITORY,
+    // odd/edilicia-obra-externa (S7): el PDF del certificado vive en TicketPdfModule.
+    CERTIFICADO_AVANCE_REPOSITORY,
     // odd/tareas-con-tecnico T3: las rutas de subtareas de reparaciones delegan en estos tres hasta
     // que T8 las retire.
     CrearTareaTicketUseCase,
