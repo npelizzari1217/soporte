@@ -155,7 +155,10 @@ export interface ItemCompraActualizarProps {
    * Sujeto a `asegurarInsumoReasignable()`, NO al congelamiento.
    */
   insumoId?: string | null;
-  /** Se valida junto con `insumoId` sobre el valor RESULTANTE (ver `validarServicioSinInsumo`). */
+  /**
+   * Se valida junto con `insumoId` sobre el valor RESULTANTE (ver `validarServicioSinInsumo`), y
+   * queda congelado cuando el ítem está decidido (`ItemCompraCongeladoError`).
+   */
   esServicio?: boolean;
   cantidad?: number;
   proveedor?: string;
@@ -481,6 +484,16 @@ export class ItemCompraEntity extends BaseEntity<ItemCompraProps> {
       const guardInsumo = this.asegurarInsumoReasignable(datos.insumoId);
       if (guardInsumo.isFail()) {
         return guardInsumo;
+      }
+    }
+
+    // Congelado con el ítem decidido (L11): cambiarlo después de la aprobación desbloquearía el
+    // ticket sin que nadie revise la compra. Dispara por CAMBIO EFECTIVO, como `insumoId`, para que
+    // un formulario que reenvía el shape completo pueda seguir editando la descripción.
+    if (datos.esServicio !== undefined && datos.esServicio !== this.props.esServicio) {
+      const guardCongelado = this.asegurarNoCongelado();
+      if (guardCongelado.isFail()) {
+        return guardCongelado;
       }
     }
 

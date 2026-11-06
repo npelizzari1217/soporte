@@ -107,6 +107,33 @@ describe('ItemCompraEntity', () => {
       expect(item.insumoId).toBeNull();
     });
 
+    it.each([
+      ['APROBADO', (item: ItemCompraEntity) => item.aprobar('usuario-1')],
+      ['RECHAZADO', (item: ItemCompraEntity) => item.rechazar('usuario-1')],
+    ])(
+      'con el ítem %s, cambiar esServicio falla con ItemCompraCongeladoError, sin mutar',
+      (_estado, decidir) => {
+        const item = ItemCompraEntity.create(crearPropsValidas());
+        decidir(item);
+
+        const result = item.actualizar({ esServicio: true, descripcion: 'Otra cosa' });
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError().code).toBe('ITEM_COMPRA_CONGELADO');
+        expect(item.esServicio).toBe(false);
+        expect(item.descripcion).toBe('Notebook Dell Latitude');
+      },
+    );
+
+    it('con el ítem decidido, reenviar el mismo esServicio no cambia nada y se acepta', () => {
+      const item = crearItemAprobado({ esServicio: true });
+
+      const result = item.actualizar({ esServicio: true, descripcion: 'Otra cosa' });
+
+      expect(result.isOk()).toBe(true);
+      expect(item.descripcion).toBe('Otra cosa');
+    });
+
     it('desmarcar el servicio se acepta y vuelve a permitir declarar un insumo', () => {
       const item = ItemCompraEntity.create(crearPropsValidas({ esServicio: true }));
 
