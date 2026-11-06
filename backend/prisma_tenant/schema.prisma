@@ -456,6 +456,10 @@ model TareaTicket {
   completadaEn    DateTime? @map("completada_en") @db.Timestamptz
   /// Soft ref → master.usuarios.id. Quién completó la tarea; NULL mientras está pendiente.
   completadaPorId String?   @map("completada_por_id") @db.Uuid
+  /// Porcentaje entero de la obra que representa la tarea (odd/edilicia-obra-externa, S4). Solo se
+  /// usa en tickets EXTERNA. CHECK `tareas_ticket_peso_check` (0..100); la suma del ticket la acota
+  /// el dominio (`PESO_TAREAS_MAX`).
+  peso            Int       @default(0)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz

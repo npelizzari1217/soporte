@@ -1,5 +1,6 @@
-import { IsString, IsUUID, Matches, MaxLength, ValidateIf } from 'class-validator';
+import { IsInt, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import {
+  PESO_TAREAS_MAX,
   TAREA_DESCRIPCION_MAX_LENGTH,
   TareaTicketEntity,
 } from '../../domain/entities/tarea-ticket.entity';
@@ -28,6 +29,17 @@ export class AsignarTecnicoTareaBodyDto {
   tecnicoId!: string | null;
 }
 
+/**
+ * Body de `PATCH /tickets/:id/tareas/:tareaId/peso` (odd/edilicia-obra-externa, S4, L17):
+ * porcentaje entero de 0 a 100. Que la suma del ticket no supere 100 lo decide el caso de uso.
+ */
+export class AsignarPesoTareaBodyDto {
+  @IsInt()
+  @Min(0)
+  @Max(PESO_TAREAS_MAX)
+  peso!: number;
+}
+
 /** Nombre y apellido de un usuario de master, como los devuelve `resolverNombres`. */
 export type NombreUsuario = { nombre: string; apellido: string };
 
@@ -48,6 +60,8 @@ export interface TareaTicketResponseDto {
   completadaPorId: string | null;
   completadaPorNombre: string | null;
   completadaPorApellido: string | null;
+  /** Porcentaje entero de la obra (odd/edilicia-obra-externa, S4); solo significa algo en EXTERNA. */
+  peso: number;
   createdAt: string;
 }
 
@@ -86,6 +100,7 @@ export function toTareaTicketResponseDto(
     completadaPorId: tarea.completadaPorId,
     completadaPorNombre: completadaPor?.nombre ?? null,
     completadaPorApellido: completadaPor?.apellido ?? null,
+    peso: tarea.peso,
     createdAt: tarea.createdAt.toISOString(),
   };
 }

@@ -535,6 +535,7 @@ describe('GenerarPdfTicketUseCase', () => {
           completada: false,
           completadaEn: null,
           completadaPorId: null,
+          peso: 0,
         },
         't-borrada',
         AHORA,

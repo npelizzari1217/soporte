@@ -40,7 +40,8 @@ export class ListarTareasTicketUseCase {
     );
     if (ticketResult.isFail()) return Result.fail(ticketResult.getError());
 
-    const tareas = await this.tareaRepo.listarPorTicket(ticketResult.getValue().id);
-    return Result.ok({ tareas, avance: calcularAvanceTareas(tareas) });
+    const ticket = ticketResult.getValue();
+    const tareas = await this.tareaRepo.listarPorTicket(ticket.id);
+    return Result.ok({ tareas, avance: calcularAvanceTareas(tareas, ticket.modalidad) });
   }
 }

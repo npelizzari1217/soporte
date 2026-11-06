@@ -13,6 +13,8 @@ import {
   TareaAccionNoPermitidaError,
   TareaNoCompletadaError,
   TareaNoEncontradaError,
+  PesoTareaSoloExternoError,
+  PesoTareasExcedeTotalError,
   TareaTicketNoEditableError,
   TareaYaCompletadaError,
   TecnicoTareaNoElegibleError,
@@ -30,6 +32,7 @@ import { EventoTarea } from '../../domain/policies/estado-por-tareas.policy';
 import { ActorTarea } from '../services/tareas-ticket.reglas';
 import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
 import { AsignarTecnicoTareaUseCase } from './asignar-tecnico-tarea.use-case';
+import { AsignarPesoTareaUseCase } from './asignar-peso-tarea.use-case';
 import { CompletarTareaUseCase } from './completar-tarea.use-case';
 import { CrearTareaTicketUseCase } from './crear-tarea-ticket.use-case';
 import { DescompletarTareaUseCase } from './descompletar-tarea.use-case';
@@ -197,6 +200,7 @@ function armar() {
       return true;
     }),
     asignarTecnicoSiActiva: vi.fn(async (_tarea: TareaTicketEntity) => true),
+    asignarPesoSiActiva: vi.fn(async (_tarea: TareaTicketEntity) => true),
     darDeBajaSiActiva: vi.fn(async (_tarea: TareaTicketEntity) => true),
   };
   const operacionRepo = {
@@ -368,6 +372,14 @@ function armar() {
       ahora,
     ),
     listar: new ListarTareasTicketUseCase(ticketRepo, tareaRepo),
+    ponderar: new AsignarPesoTareaUseCase(
+      ticketRepo,
+      tipoTicketRepo,
+      tareaRepo,
+      txRunner,
+      verificadorEditable,
+      ahora,
+    ),
   };
 }
 
@@ -599,6 +611,93 @@ describe('AsignarTecnicoTareaUseCase', () => {
       expect(errorDe(result)).toBeInstanceOf(TareaNoEncontradaError);
     }
     expect(deps.tareas.get('ajena')?.tecnicoId).toBeNull();
+  });
+});
+
+describe('AsignarPesoTareaUseCase (odd/edilicia-obra-externa, S4, S9)', () => {
+  /** Ticket EXTERNA con tareas de los pesos dados (`t1`, `t2`, ...). */
+  function externoCon(...pesos: number[]) {
+    const deps = armar();
+    deps.tickets.get(TICKET_ID)?.actualizarDatos({ modalidad: 'EXTERNA' });
+    pesos.forEach((peso, i) => {
+      const tarea = deps.sembrarTarea(`t${i + 1}`, { orden: i });
+      tarea.asignarPeso(peso, AHORA);
+    });
+    return deps;
+  }
+  const ponderar = (
+    deps: ReturnType<typeof armar>,
+    peso: number,
+    a: ActorTarea = ACTORES.responsable,
+    tareaId = 't1',
+  ) => deps.ponderar.execute({ ticketId: TICKET_ID, tareaId, actor: a, peso });
+
+  it.each(MATRIZ_GESTION)('actor %s → %s', async (nombre, esperado) => {
+    const deps = externoCon(0);
+    const result = await ponderar(deps, 30, ACTORES[nombre]);
+    verificarRechazo(result, esperado);
+    expect(deps.tareaRepo.asignarPesoSiActiva).toHaveBeenCalledTimes(esperado === 'ok' ? 1 : 0);
+  });
+
+  it('fija el peso y lo persiste dentro de la transacción, con el lock del ticket', async () => {
+    const deps = externoCon(60, 0);
+
+    const result = await ponderar(deps, 40, ACTORES.responsable, 't2');
+
+    expect(result.getValue().peso).toBe(40);
+    expect(deps.ticketRepo.bloquear).toHaveBeenCalledWith(TICKET_ID);
+    expect(deps.tareaRepo.asignarPesoSiActiva).toHaveBeenCalledTimes(1);
+  });
+
+  it('llegar justo a 100 se acepta; pasarse por 1 se rechaza con PesoTareasExcedeTotalError y no escribe', async () => {
+    const deps = externoCon(60, 0);
+
+    expect((await ponderar(deps, 40, ACTORES.responsable, 't2')).isOk()).toBe(true);
+    const error = errorDe(await ponderar(deps, 41, ACTORES.responsable, 't2'));
+
+    expect(error).toBeInstanceOf(PesoTareasExcedeTotalError);
+    expect(error.message).toContain('101 %');
+    expect(deps.tareaRepo.asignarPesoSiActiva).toHaveBeenCalledTimes(1);
+  });
+
+  it('S9: con el ticket en 100, una tarea nueva no puede pesar hasta que se baje otra', async () => {
+    const deps = externoCon(70, 30, 0);
+
+    expect(errorDe(await ponderar(deps, 10, ACTORES.responsable, 't3'))).toBeInstanceOf(
+      PesoTareasExcedeTotalError,
+    );
+    expect((await ponderar(deps, 60, ACTORES.responsable, 't1')).isOk()).toBe(true);
+    expect((await ponderar(deps, 10, ACTORES.responsable, 't3')).isOk()).toBe(true);
+  });
+
+  it('una tarea dada de baja no cuenta en la suma', async () => {
+    const deps = externoCon(80, 0);
+    deps.tareas.get('t1')?.eliminar(AHORA);
+
+    expect((await ponderar(deps, 100, ACTORES.responsable, 't2')).isOk()).toBe(true);
+  });
+
+  it('en un ticket INTERNA se rechaza con PesoTareaSoloExternoError y no escribe', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1');
+
+    expect(errorDe(await ponderar(deps, 30))).toBeInstanceOf(PesoTareaSoloExternoError);
+    expect(deps.tareaRepo.asignarPesoSiActiva).not.toHaveBeenCalled();
+  });
+
+  it('reenviar el mismo peso no escribe', async () => {
+    const deps = externoCon(25);
+
+    expect((await ponderar(deps, 25)).isOk()).toBe(true);
+    expect(deps.tareaRepo.asignarPesoSiActiva).not.toHaveBeenCalled();
+  });
+
+  it('con el ticket bloqueado por una compra se rechaza como el resto de las escrituras de tareas', async () => {
+    const deps = externoCon(0);
+    deps.bloqueados.add(TICKET_ID);
+
+    expect(errorDe(await ponderar(deps, 30))).toBeInstanceOf(TareaTicketNoEditableError);
+    expect(deps.tareaRepo.asignarPesoSiActiva).not.toHaveBeenCalled();
   });
 });
 

@@ -45,6 +45,7 @@ import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { CrearTareaTicketUseCase } from '../../application/use-cases/crear-tarea-ticket.use-case';
 import { AsignarTecnicoTareaUseCase } from '../../application/use-cases/asignar-tecnico-tarea.use-case';
+import { AsignarPesoTareaUseCase } from '../../application/use-cases/asignar-peso-tarea.use-case';
 import { CompletarTareaUseCase } from '../../application/use-cases/completar-tarea.use-case';
 import { DescompletarTareaUseCase } from '../../application/use-cases/descompletar-tarea.use-case';
 import { EliminarTareaUseCase } from '../../application/use-cases/eliminar-tarea.use-case';
@@ -53,6 +54,8 @@ import { ListarTecnicosElegiblesTareaUseCase } from '../../application/use-cases
 import { TecnicoAsignable } from '../../application/use-cases/listar-tecnicos-asignables.use-case';
 import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import {
+  PesoTareaSoloExternoError,
+  PesoTareasExcedeTotalError,
   TareaAccionNoPermitidaError,
   TareaNoCompletadaError,
   TareaNoEncontradaError,
@@ -67,6 +70,7 @@ import {
 } from '../../domain/ports/i-usuario-master.checker';
 import { CargadorAlcanceTicket } from '../alcance-ticket';
 import {
+  AsignarPesoTareaBodyDto,
   AsignarTecnicoTareaBodyDto,
   CrearTareaTicketBodyDto,
   TareaTicketResponseDto,
@@ -92,7 +96,12 @@ export function toHttpExceptionTareas(
   if (error instanceof TareaAccionNoPermitidaError) {
     return new ForbiddenException(error.message);
   }
-  if (error instanceof TecnicoTareaNoElegibleError || error instanceof TareaTicketNoEditableError) {
+  if (
+    error instanceof TecnicoTareaNoElegibleError ||
+    error instanceof TareaTicketNoEditableError ||
+    error instanceof PesoTareasExcedeTotalError ||
+    error instanceof PesoTareaSoloExternoError
+  ) {
     return new UnprocessableEntityException(error.message);
   }
   return toHttpException(error);
@@ -116,6 +125,7 @@ export class TareasTicketController {
     private readonly eliminarTarea: EliminarTareaUseCase,
     @Inject(USUARIO_MASTER_CHECKER) private readonly usuarioMasterChecker: IUsuarioMasterChecker,
     private readonly alcances: CargadorAlcanceTicket,
+    private readonly asignarPeso: AsignarPesoTareaUseCase,
   ) {}
 
   /** Nombres del técnico y de quien completó, en un solo batch cross-DB (sin N+1). */
@@ -206,6 +216,31 @@ export class TareasTicketController {
         actor: await this.alcances.cargarActorTarea(user),
         clienteId: user.cliente_id as string,
         tecnicoId: body.tecnicoId,
+      }),
+    );
+    return this.aDto(tarea);
+  }
+
+  /**
+   * PATCH /tickets/:id/tareas/:tareaId/peso — fija el peso de la tarea en un ticket EXTERNA
+   * (odd/edilicia-obra-externa, S4, S9).
+   * @throws 400 peso que no es un entero de 0 a 100 · 403 sin permiso · 404 ticket o tarea
+   *   · 422 ticket no externo, suma de pesos por encima de 100, ticket bloqueado por una compra,
+   *   o RESUELTO/CERRADO/CANCELADO para quien no es administrador
+   */
+  @Patch(':id/tareas/:tareaId/peso')
+  async ponderar(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') ticketId: string,
+    @Param('tareaId') tareaId: string,
+    @Body() body: AsignarPesoTareaBodyDto,
+  ): Promise<TareaTicketResponseDto> {
+    const tarea = valorOExcepcion(
+      await this.asignarPeso.execute({
+        ticketId,
+        tareaId,
+        actor: await this.alcances.cargarActorTarea(user),
+        peso: body.peso,
       }),
     );
     return this.aDto(tarea);

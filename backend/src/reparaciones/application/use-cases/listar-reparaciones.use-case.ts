@@ -216,7 +216,7 @@ export class ListarReparacionesUseCase {
       return {
         ticket,
         subtareas: tareas,
-        porcentajeAvance: calcularAvanceTareas(tareas).porcentaje,
+        porcentajeAvance: calcularAvanceTareas(tareas, ticket.modalidad).porcentaje,
         cantidadComentarios: comentarios.publicos + (veInternos ? comentarios.internos : 0),
         // El bloqueo cuenta todas las compras; la lista publica solo las que el actor ve, para
         // no exponer el número ni el id de una compra de otro tipo (odd/compras-por-tipo, S2).

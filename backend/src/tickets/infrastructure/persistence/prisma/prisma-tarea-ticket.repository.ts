@@ -124,6 +124,14 @@ export class PrismaTareaTicketRepository implements ITareaTicketRepository {
     return count === 1;
   }
 
+  async asignarPesoSiActiva(tarea: TareaTicketEntity): Promise<boolean> {
+    const { count } = await this.client.tareaTicket.updateMany({
+      where: { id: tarea.id, deletedAt: null },
+      data: { peso: tarea.peso },
+    });
+    return count === 1;
+  }
+
   async darDeBajaSiActiva(tarea: TareaTicketEntity): Promise<boolean> {
     const { count } = await this.client.tareaTicket.updateMany({
       where: { id: tarea.id, deletedAt: null },

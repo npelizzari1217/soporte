@@ -29,6 +29,7 @@ import { PrismaTipoTicketRepository } from '../../infrastructure/persistence/pri
 import { ActorTarea } from '../services/tareas-ticket.reglas';
 import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
 import { AsignarTecnicoTareaUseCase } from './asignar-tecnico-tarea.use-case';
+import { AsignarPesoTareaUseCase } from './asignar-peso-tarea.use-case';
 import { CompletarTareaUseCase } from './completar-tarea.use-case';
 import { DescompletarTareaUseCase } from './descompletar-tarea.use-case';
 import { EliminarTareaUseCase } from './eliminar-tarea.use-case';
@@ -149,6 +150,9 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
       txRunner,
       siempreEditable,
     );
+
+  const ponderar = (repo = tareaRepo) =>
+    new AsignarPesoTareaUseCase(ticketRepo, tipoTicketRepo, repo, txRunner, siempreEditable);
 
   async function sembrarTarea(tecnicoId: string | null = TECNICO_A): Promise<TareaTicketEntity> {
     const tarea = TareaTicketEntity.crear({
@@ -611,6 +615,34 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
       expect(await codigosDelHistorial()).toEqual([]);
     } finally {
       await client.ticket.update({ where: { id: ticketId }, data: { estadoId: estadoOriginalId } });
+    }
+  });
+
+  // odd/edilicia-obra-externa (S9): la suma de los pesos se decide con el lock del ticket tomado.
+  it('dos pesos a la par que juntos pasan 100: el segundo se rechaza y la base queda en 60', async () => {
+    await client.ticket.update({ where: { id: ticketId }, data: { modalidad: 'EXTERNA' } });
+    try {
+      const t1 = await sembrarTarea(null);
+      const t2 = await sembrarTarea(null);
+      const repo = repoConCarrera(() =>
+        ponderar().execute({ ticketId, tareaId: t2.id, actor: RESPONSABLE_ACTOR, peso: 60 }),
+      );
+
+      const result = await enTenant(() =>
+        ponderar(repo).execute({ ticketId, tareaId: t1.id, actor: RESPONSABLE_ACTOR, peso: 60 }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('PESO_TAREAS_EXCEDE_TOTAL');
+      const filas = await client.tareaTicket.findMany({
+        where: { id: { in: [t1.id, t2.id] } },
+        select: { id: true, peso: true },
+      });
+      const pesoDe = new Map(filas.map((f) => [f.id, f.peso]));
+      expect(pesoDe.get(t1.id)).toBe(0);
+      expect(pesoDe.get(t2.id)).toBe(60);
+    } finally {
+      await client.ticket.update({ where: { id: ticketId }, data: { modalidad: 'INTERNA' } });
     }
   });
 });

@@ -112,6 +112,7 @@ import { ListarTiposOperacionUseCase } from './application/use-cases/listar-tipo
 import { ExportarTicketsUseCase } from './application/use-cases/exportar-tickets.use-case';
 import { CrearTareaTicketUseCase } from './application/use-cases/crear-tarea-ticket.use-case';
 import { AsignarTecnicoTareaUseCase } from './application/use-cases/asignar-tecnico-tarea.use-case';
+import { AsignarPesoTareaUseCase } from './application/use-cases/asignar-peso-tarea.use-case';
 import { CompletarTareaUseCase } from './application/use-cases/completar-tarea.use-case';
 import { AvanzarEstadoPorTareasService } from './application/services/avanzar-estado-por-tareas.service';
 import { VerificadorTicketEditable } from './application/services/ticket-editable-para-tareas';
@@ -654,6 +655,31 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
         ElegibilidadAsignado,
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
+        TENANT_TX_RUNNER,
+        VerificadorTicketEditable,
+      ],
+    },
+    {
+      // odd/edilicia-obra-externa (S4, S9): peso de una tarea de un ticket EXTERNA.
+      provide: AsignarPesoTareaUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+        tareaRepo: ITareaTicketRepository,
+        txRunner: ITenantTransactionRunner,
+        verificadorEditable: VerificadorTicketEditable,
+      ): AsignarPesoTareaUseCase =>
+        new AsignarPesoTareaUseCase(
+          ticketRepo,
+          tipoTicketRepo,
+          tareaRepo,
+          txRunner,
+          verificadorEditable,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
         TENANT_TX_RUNNER,
         VerificadorTicketEditable,
       ],

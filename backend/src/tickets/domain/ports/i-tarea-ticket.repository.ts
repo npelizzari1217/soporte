@@ -104,6 +104,9 @@ export interface ITareaTicketRepository {
   /** Persiste la baja lógica solo si la tarea sigue activa. Conserva quién la completó. */
   darDeBajaSiActiva(tarea: TareaTicketEntity): Promise<boolean>;
 
+  /** Persiste solo el peso, si la tarea sigue activa (odd/edilicia-obra-externa, S4). */
+  asignarPesoSiActiva(tarea: TareaTicketEntity): Promise<boolean>;
+
   /** Baja lógica por id: setea `deleted_at`. No borra la fila. */
   eliminar(id: string, ahora: Date): Promise<void>;
 

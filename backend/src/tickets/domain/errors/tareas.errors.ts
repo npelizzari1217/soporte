@@ -68,6 +68,34 @@ export class TecnicoTareaNoElegibleError extends DomainError {
 }
 
 /**
+ * El peso pedido dejaría la suma de las tareas activas del ticket por encima de 100 %
+ * (odd/edilicia-obra-externa, S9, L16). El sistema no redistribuye: el usuario baja a mano el peso
+ * de otras tareas antes. → HTTP 422.
+ */
+export class PesoTareasExcedeTotalError extends DomainError {
+  readonly code = 'PESO_TAREAS_EXCEDE_TOTAL';
+
+  constructor(sumaResultante: number) {
+    super(
+      `Con ese peso, las tareas del ticket sumarían ${sumaResultante} %, por encima del 100 %. ` +
+        'Baje primero el peso de otras tareas.',
+    );
+  }
+}
+
+/**
+ * El peso de las tareas solo se usa en tickets con modalidad EXTERNA (odd/edilicia-obra-externa,
+ * S4): en uno interno no mide nada y guardarlo dejaría un dato sin significado. → HTTP 422.
+ */
+export class PesoTareaSoloExternoError extends DomainError {
+  readonly code = 'PESO_TAREA_SOLO_EXTERNO';
+
+  constructor() {
+    super('El peso de las tareas solo se usa en tickets con modalidad externa.');
+  }
+}
+
+/**
  * El ticket está bloqueado por una compra en curso: sus tareas son de solo lectura (ni crear,
  * completar, descompletar, eliminar ni asignar técnico), para cualquier actor
  * (odd/ticket-cerrado-solo-lectura, S2; odd/ticket-unificado, S5). Un ticket RESUELTO, CERRADO o
