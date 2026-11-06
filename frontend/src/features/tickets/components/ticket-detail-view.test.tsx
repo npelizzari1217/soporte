@@ -1129,3 +1129,39 @@ describe("TicketDetailView — compras vinculadas y bloqueo (odd/ticket-unificad
     expect(screen.getAllByText("Bloqueado por una compra en curso")).toHaveLength(1);
   });
 });
+
+describe("TicketDetailView — certificados de avance (odd/edilicia-obra-externa, T4)", () => {
+  beforeEach(() => {
+    mockBackend();
+    server.use(http.get(`/api/tickets/${TICKET_ID}/certificados`, () => HttpResponse.json([])));
+  });
+
+  it.each([
+    ["EXTERNA", true],
+    ["INTERNA", false],
+  ] as const)("con modalidad %s la sección se muestra: %s", async (modalidad, visible) => {
+    server.use(http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, modalidad })));
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1() });
+
+    await screen.findByText("Cambiar el tóner");
+    if (visible) expect(await screen.findByRole("heading", { name: "Certificados de avance" })).toBeInTheDocument();
+    else expect(screen.queryByRole("heading", { name: "Certificados de avance" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["con", true],
+    ["sin", false],
+  ] as const)("%s CERTIFICAR sobre el tipo se ofrece emitir: %s", async (_caso, conPermiso) => {
+    server.use(http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, modalidad: "EXTERNA" })));
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: TECNICO,
+      permisos: conPermiso ? enTi1("CERTIFICAR") : enTi1(),
+    });
+
+    await screen.findByRole("heading", { name: "Certificados de avance" });
+    await screen.findByText("Sin certificados todavía.");
+    if (conPermiso) expect(screen.getByRole("heading", { name: "Emitir certificado" })).toBeInTheDocument();
+    else expect(screen.queryByRole("heading", { name: "Emitir certificado" })).not.toBeInTheDocument();
+  });
+});
+

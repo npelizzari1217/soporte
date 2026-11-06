@@ -105,3 +105,15 @@ export function pesoTareaSchema(disponible: number) {
   });
 }
 export type PesoTareaFormValues = { peso: number };
+
+/** Tope del motivo de anulación (espejo de `MOTIVO_ANULACION_MAX_LENGTH`). */
+export const MOTIVO_ANULACION_MAX_LENGTH = 2000;
+
+/** Espejo de `AnularCertificadoBodyDto`: al menos un carácter visible y hasta 2000. */
+export const anularCertificadoSchema = z.object({
+  motivo: z
+    .string()
+    .regex(/\S/, "El motivo es requerido")
+    .max(MOTIVO_ANULACION_MAX_LENGTH, mensajeDemasiadoLargo("El motivo", MOTIVO_ANULACION_MAX_LENGTH)),
+});
+export type AnularCertificadoFormValues = z.infer<typeof anularCertificadoSchema>;

@@ -295,6 +295,33 @@ export interface TareaTicket {
   createdAt: string;
 }
 
+/** Una tarea de un certificado, con el peso COPIADO al emitir (odd/edilicia-obra-externa, S8). */
+export interface TareaDeCertificado {
+  tareaId: string;
+  /** Descripción vigente de la tarea, o `null` si no se pudo resolver. */
+  descripcion: string | null;
+  peso: number;
+}
+
+/** Certificado de avance de obra (espejo de `CertificadoResponseDto`, odd/edilicia-obra-externa, S5-S8). */
+export interface CertificadoAvance {
+  id: string;
+  ticketId: string;
+  numero: number;
+  porcentaje: number;
+  vigente: boolean;
+  emitidoPorId: string;
+  emitidoPorNombre: string | null;
+  emitidoPorApellido: string | null;
+  emitidoEn: string;
+  anuladoEn: string | null;
+  anuladoPorId: string | null;
+  anuladoPorNombre: string | null;
+  anuladoPorApellido: string | null;
+  motivoAnulacion: string | null;
+  tareas: TareaDeCertificado[];
+}
+
 /** Avance sobre las tareas activas (espejo de `AvanceTareas` de `avance-tareas.ts`). */
 export interface AvanceTareas {
   total: number;

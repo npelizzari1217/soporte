@@ -62,6 +62,7 @@ import { TicketEquipoMantenimientoCard } from "./ticket-equipo-mantenimiento-car
 import { TicketPdfButton } from "./ticket-pdf-button";
 import { TicketBorrarButton } from "./ticket-borrar-button";
 import { TicketTareas } from "./ticket-tareas";
+import { TicketCertificados } from "./ticket-certificados";
 import { TicketCompras } from "./ticket-compras";
 import { TicketTiempoTecnico } from "./ticket-tiempo-tecnico";
 import { useComprasDeTicket } from "../hooks/use-compras-de-ticket";
@@ -277,6 +278,19 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
           modalidad={ticket.modalidad}
         />
       </section>
+
+      {/* Certificados de avance de obra: solo en un ticket EXTERNA (odd/edilicia-obra-externa, T4). */}
+      {ticket.modalidad === "EXTERNA" && (
+        <section
+          aria-labelledby="certificados-titulo"
+          className="rounded-lg border border-border bg-seccion-tareas p-6"
+        >
+          <h2 id="certificados-titulo" className="mb-4 text-sm font-semibold text-foreground">
+            Certificados de avance
+          </h2>
+          <TicketCertificados ticketId={ticket.id} puedeCertificar={puede("CERTIFICAR")} estadoCodigo={estadoCodigo} />
+        </section>
+      )}
 
       {/* Tiempo de cada técnico contra la meta (odd/tasks/tiempo-tecnico.md, T4): sin tramos no se monta. */}
       <TicketTiempoTecnico ticketId={ticket.id} />
