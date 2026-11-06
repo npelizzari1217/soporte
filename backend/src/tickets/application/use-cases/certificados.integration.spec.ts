@@ -407,6 +407,104 @@ describe('Certificados de avance (T3b, tenant efímero)', () => {
     expect(await client.certificacionAvance.count({ where: { ticketId } })).toBe(1);
   });
 
+  it('S6: anular sin CERTIFICAR responde 403 y no toca el certificado ni el historial', async () => {
+    const { ticketId, tareas } = await ticketCon([100], [0]);
+    const certificado = (
+      await enTenant(() =>
+        emitir.execute({ ticketId, alcance: CON_CERTIFICAR(), tareaIds: [tareas[0]] }),
+      )
+    ).getValue();
+
+    const result = await enTenant(() =>
+      anular.execute({
+        ticketId,
+        certificadoId: certificado.id,
+        alcance: SIN_CERTIFICAR(),
+        motivo: 'Intento sin permiso',
+      }),
+    );
+
+    expect(result.getError().code).toBe('ACCION_SOBRE_TIPO_NO_PERMITIDA');
+    const fila = await client.certificacionAvance.findUniqueOrThrow({
+      where: { id: certificado.id },
+    });
+    expect(fila.anuladoEn).toBeNull();
+    expect(
+      await client.certificacionTarea.count({
+        where: { certificacionId: certificado.id, vigente: true },
+      }),
+    ).toBe(1);
+    expect(await codigosDelHistorial(ticketId)).toEqual(['CERTIFICADO_EMITIDO']);
+  });
+
+  it('S6: con CERTIFICAR pero sin ver el ticket, emitir y anular dan 404 sin revelar el certificado', async () => {
+    const { ticketId, tareas } = await ticketCon([100], [0]);
+    const certificado = (
+      await enTenant(() =>
+        emitir.execute({ ticketId, alcance: CON_CERTIFICAR(), tareaIds: [tareas[0]] }),
+      )
+    ).getValue();
+    // Tiene LECTURA y CERTIFICAR pero no VER_TODOS: la regla de fila no lo deja ver un ticket ajeno.
+    const sinVerLaFila = alcance(LECTOR, ['LECTURA', 'CERTIFICAR']);
+
+    const anulacion = await enTenant(() =>
+      anular.execute({
+        ticketId,
+        certificadoId: certificado.id,
+        alcance: sinVerLaFila,
+        motivo: 'x',
+      }),
+    );
+    const emision = await enTenant(() =>
+      emitir.execute({ ticketId, alcance: sinVerLaFila, tareaIds: [tareas[0]] }),
+    );
+
+    expect(anulacion.getError().code).toBe('TICKET_NO_ENCONTRADO');
+    expect(emision.getError().code).toBe('TICKET_NO_ENCONTRADO');
+    const fila = await client.certificacionAvance.findUniqueOrThrow({
+      where: { id: certificado.id },
+    });
+    expect(fila.anuladoEn).toBeNull();
+  });
+
+  it('L26: con el ticket cerrado no se anula un certificado vigente', async () => {
+    const { ticketId, tareas } = await ticketCon([100], [0]);
+    const certificado = (
+      await enTenant(() =>
+        emitir.execute({ ticketId, alcance: CON_CERTIFICAR(), tareaIds: [tareas[0]] }),
+      )
+    ).getValue();
+    await client.ticket.update({ where: { id: ticketId }, data: { estadoId: estadoCerradoId } });
+
+    const result = await enTenant(() =>
+      anular.execute({
+        ticketId,
+        certificadoId: certificado.id,
+        alcance: ADMINISTRADOR,
+        motivo: 'x',
+      }),
+    );
+
+    expect(result.getError().code).toBe('CERTIFICACION_TICKET_CERRADO');
+    const fila = await client.certificacionAvance.findUniqueOrThrow({
+      where: { id: certificado.id },
+    });
+    expect(fila.anuladoEn).toBeNull();
+  });
+
+  it('S4/S5: una tarea borrada no se certifica ni cuenta para el 100', async () => {
+    const { ticketId, tareas } = await ticketCon([70, 30], [0, 1]);
+    await client.tareaTicket.update({ where: { id: tareas[1] }, data: { deletedAt: new Date() } });
+
+    const result = await enTenant(() =>
+      emitir.execute({ ticketId, alcance: CON_CERTIFICAR(), tareaIds: [tareas[0]] }),
+    );
+
+    expect(result.getError().code).toBe('PESOS_INCOMPLETOS_PARA_CERTIFICAR');
+    expect(result.getError().message).toContain('70 %');
+    expect(await client.certificacionAvance.count({ where: { ticketId } })).toBe(0);
+  });
+
   it('listar exige ver el ticket: sin LECTURA es 404', async () => {
     const { ticketId } = await ticketCon([100], [0]);
 
