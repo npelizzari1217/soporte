@@ -256,6 +256,8 @@ export interface ReparacionListItemResponseDto extends TicketEdiliciaConTicketRe
   bloqueada: boolean;
   /** Compras que frenan la reparación. `[]` cuando no está bloqueada. */
   comprasQueBloquean: CompraQueBloqueaResponseDto[];
+  /** `true` si la modalidad se puede cambiar hoy (odd/edilicia-obra-externa, S1). */
+  modalidadEditable: boolean;
 }
 
 /**
@@ -329,6 +331,7 @@ export function toReparacionListItemResponseDto(
       id: compra.compraId,
       numero: compra.numero,
     })),
+    modalidadEditable: item.modalidadEditable,
   };
 }
 

@@ -8,6 +8,7 @@
  * las embebidas. `porcentajeAvance` lo calcula el backend al leer, sobre las
  * tareas activas del ticket.
  */
+import type { ModalidadTicket } from "@/features/tickets/modalidad";
 
 /**
  * Shape unificado de un ticket edilicio (`TicketEdiliciaConTicketResponseDto`). Desde
@@ -32,6 +33,8 @@ export interface TicketEdilicia {
   /** Nombre del sector, resuelto por el backend aunque esté desactivado. */
   sectorNombre: string | null;
   porcentajeAvance: number;
+  /** Modalidad de ejecución del ticket (odd/edilicia-obra-externa, S1). */
+  modalidad: ModalidadTicket;
   createdAt: string;
   updatedAt: string;
 }
@@ -61,6 +64,11 @@ export interface ReparacionListItem extends TicketEdilicia {
    * para poder abrir/navegar hacia esas compras, no para contarlas.
    */
   comprasQueBloquean: { id: string; numero: string }[];
+  /**
+   * `true` si la modalidad se puede cambiar hoy: sin tareas activas ni compras vinculadas, todas,
+   * también las que el actor no ve (odd/edilicia-obra-externa, S1).
+   */
+  modalidadEditable: boolean;
 }
 
 export interface SubtareaEdilicia {
@@ -83,6 +91,8 @@ export interface EditarReparacionDto {
   /** Ubicación del ticket (odd/ticket-unificado). */
   ubicacion?: string | null;
   sectorId?: string | null;
+  /** Ausente no toca; solo cambia sin tareas ni compras vinculadas. */
+  modalidad?: ModalidadTicket;
 }
 
 export interface CrearTicketEdilicioDto {
@@ -95,6 +105,8 @@ export interface CrearTicketEdilicioDto {
   ubicacion?: string | null;
   /** Sector del cliente, opcional (odd/ubicacion-sector-ticket). Sin la ubicación general. */
   sectorId?: string | null;
+  /** Ausente = `INTERNA` (odd/edilicia-obra-externa, S1). */
+  modalidad?: ModalidadTicket;
 }
 
 /**

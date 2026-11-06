@@ -304,6 +304,11 @@ export interface TicketResponseDto {
    * respuestas de las escrituras.
    */
   bloqueada?: boolean;
+  /**
+   * `true` si la modalidad se puede cambiar hoy: sin tareas activas ni compras vinculadas
+   * (odd/edilicia-obra-externa, S1). Viaja SOLO en el detalle, con el mismo criterio que `bloqueada`.
+   */
+  modalidadEditable?: boolean;
   /** Calculado por el módulo SLA. `null` = sin SLA aplicable/calculado aún (sdd/beta-frontend item 2). */
   slaVenceAt: string | null;
   /** Desnormalizado, recalculado por el módulo SLA (sdd/beta-frontend item 2). */

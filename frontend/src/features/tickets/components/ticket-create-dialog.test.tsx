@@ -98,6 +98,36 @@ describe("TicketCreateDialog", () => {
     expect(bodies[1]).not.toHaveProperty("ubicacion");
     expect(bodies[1]).not.toHaveProperty("sectorId");
   });
+
+  it("la modalidad nace en Técnicos internos y viaja la elegida (odd/edilicia-obra-externa, S1)", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    server.use(
+      http.post("/api/tickets", async ({ request }) => {
+        bodies.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ id: `nuevo-${bodies.length}` }, { status: 201 });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<TicketCreateDialog />, { user: buildUser({ permisos: ["TICKETS:ALTAS"] }) });
+
+    async function completarYCrear(modalidad: string | null) {
+      await user.click(screen.getByRole("button", { name: /^nuevo ticket$/i }));
+      await user.type(await screen.findByLabelText("Título"), "Obra de techo");
+      await user.selectOptions(screen.getByLabelText("Tipo"), "11111111-1111-1111-1111-111111111111");
+      await user.selectOptions(screen.getByLabelText("Prioridad"), "22222222-2222-2222-2222-222222222222");
+      expect(screen.getByLabelText("Modalidad")).toHaveValue("INTERNA");
+      if (modalidad !== null) await user.selectOptions(screen.getByLabelText("Modalidad"), modalidad);
+      await user.click(screen.getByRole("button", { name: /crear ticket/i }));
+      await waitFor(() => expect(screen.queryByLabelText("Título")).not.toBeInTheDocument());
+    }
+
+    await completarYCrear(null);
+    expect(bodies[0]).toMatchObject({ modalidad: "INTERNA" });
+
+    await completarYCrear("EXTERNA");
+    expect(bodies[1]).toMatchObject({ modalidad: "EXTERNA" });
+  });
 });
 
 describe("TicketCreateDialog — solo los tipos con Crear (odd/permisos-por-tipo-ticket, S6)", () => {

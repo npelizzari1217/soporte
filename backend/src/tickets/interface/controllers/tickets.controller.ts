@@ -140,6 +140,7 @@ import {
   BLOQUEO_TICKET_REPOSITORY,
   IBloqueoTicketRepository,
 } from '../../domain/ports/i-bloqueo-ticket.repository';
+import { ConsultaModalidadEditable } from '../../application/services/modalidad-editable';
 import {
   ISectorRepository,
   SECTOR_REPOSITORY,
@@ -255,6 +256,8 @@ export class TicketsController {
     private readonly listarAgentesFiltroUseCase: ListarAgentesFiltroTicketsUseCase,
     @Inject(BLOQUEO_TICKET_REPOSITORY)
     private readonly bloqueoRepo: Pick<IBloqueoTicketRepository, 'estaBloqueadoPorCompra'>,
+    @Inject(ConsultaModalidadEditable)
+    private readonly modalidadEditable: Pick<ConsultaModalidadEditable, 'esEditable'>,
   ) {}
 
   /**
@@ -541,6 +544,9 @@ export class TicketsController {
    * `bloqueada` (odd/ticket-unificado, S5, L19, L22) viaja a todo el que ve el ticket, sin
    * `COMPRAS:LECTURA`: es el mismo criterio que frena sus tareas, y no nombra ninguna compra. Se
    * consulta después de la visibilidad, así un 404 no revela nada.
+   *
+   * `modalidadEditable` (odd/edilicia-obra-externa, S1) sigue el mismo criterio: lo decide el
+   * backend con la misma consulta que la edición, porque la pantalla no siempre ve las compras.
    */
   @Get(':id')
   async findOne(
@@ -556,7 +562,7 @@ export class TicketsController {
       throw toHttpException(result.getError());
     }
     const ticket = result.getValue();
-    const [nombres, csat, bloqueada] = await Promise.all([
+    const [nombres, csat, bloqueada, modalidadEditable] = await Promise.all([
       this.resolverNombresPorTicket([ticket]).then((porTicket) => porTicket.get(ticket.id)),
       this.obtenerCsatTicketUseCase.execute({
         ticketId: ticket.id,
@@ -566,12 +572,17 @@ export class TicketsController {
         tieneCsatLectura: puedeEjecutar(user, ACCION_CSAT_LECTURA),
       }),
       this.bloqueoRepo.estaBloqueadoPorCompra(ticket.id),
+      this.modalidadEditable.esEditable(ticket.id),
     ]);
     // El teléfono del externo viaja solo en el detalle (nunca en el listado).
     const externo = ticket.solicitanteExternoId
       ? await this.solicitanteExternoRepo.findById(ticket.solicitanteExternoId)
       : null;
-    return { ...(await this.aDto(ticket, nombres, csat, externo?.telefono ?? null)), bloqueada };
+    return {
+      ...(await this.aDto(ticket, nombres, csat, externo?.telefono ?? null)),
+      bloqueada,
+      modalidadEditable,
+    };
   }
 
   /**

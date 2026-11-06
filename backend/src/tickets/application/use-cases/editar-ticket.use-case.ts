@@ -1,11 +1,7 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
-import {
-  ModalidadTicket,
-  TicketEntity,
-  modalidadEsEditable,
-} from '../../domain/entities/ticket.entity';
+import { ModalidadTicket, TicketEntity } from '../../domain/entities/ticket.entity';
 import { TicketReprioritizadoEvent } from '../../domain/events/ticket-reprioritizado.event';
 import {
   ModalidadNoEditableError,
@@ -22,6 +18,7 @@ import { IBloqueoTicketRepository } from '../../domain/ports/i-bloqueo-ticket.re
 import { ESTADOS_PRE_PROCESO } from '../../domain/state-machine/estados.constants';
 import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
 import { esAlcanceDeAdministrador, verificarTicketModificable } from '../services/solo-comentarios';
+import { ConsultaModalidadEditable } from '../services/modalidad-editable';
 
 /**
  * DTO de entrada de `EditarTicketUseCase` (T8 — PATCH semántico).
@@ -174,10 +171,8 @@ export class EditarTicketUseCase {
     // odd/edilicia-obra-externa (S1): la modalidad solo cambia sin tareas ni compras. Reenviar la
     // misma no es un cambio y no se valida. ROOT tampoco la salta: es coherencia de datos, no permiso.
     if (dto.modalidad !== undefined && dto.modalidad !== ticket.modalidad) {
-      const tareas = await this.tareaRepo.listarPorTicket(ticket.id);
-      const compras = await this.bloqueoRepo.comprasVinculadas(ticket.id);
-      const tareasActivas = tareas.filter((t) => !t.isDeleted()).length;
-      if (!modalidadEsEditable(tareasActivas, compras.length)) {
+      const consulta = new ConsultaModalidadEditable(this.tareaRepo, this.bloqueoRepo);
+      if (!(await consulta.esEditable(ticket.id))) {
         return Result.fail(new ModalidadNoEditableError());
       }
     }

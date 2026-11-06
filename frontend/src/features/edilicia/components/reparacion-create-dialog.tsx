@@ -38,6 +38,8 @@ import {
 import { admiteAltaManual } from "@/features/tickets/lib/alta-manual";
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { useCrearReparacion } from "../hooks/use-reparacion-mutations";
+import { MODALIDAD_POR_DEFECTO } from "@/features/tickets/modalidad";
+import { CampoModalidad } from "@/features/tickets/components/campo-modalidad";
 import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
 import {
   crearReparacionSchema,
@@ -77,6 +79,7 @@ export function ReparacionCreateDialog() {
     formState: { errors },
   } = useForm<CrearReparacionFormValues>({
     resolver: zodResolver(crearReparacionSchema),
+    defaultValues: { modalidad: MODALIDAD_POR_DEFECTO },
   });
 
   if (tiposQuery.isSuccess && tiposConAlta.length === 0) return null;
@@ -95,6 +98,7 @@ export function ReparacionCreateDialog() {
         tipoId: values.tipoId || undefined,
         ubicacion: values.ubicacion || undefined,
         sectorId: values.sectorId || undefined,
+        modalidad: values.modalidad,
       },
       {
         onSuccess: () => {
@@ -262,6 +266,8 @@ export function ReparacionCreateDialog() {
               ))}
             </Select>
           </div>
+
+          <CampoModalidad id="reparacion-modalidad" registro={register("modalidad")} />
 
           <div className="flex justify-end gap-2">
             <Button type="submit" isLoading={crearMutation.isPending}>

@@ -20,6 +20,7 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { TicketsController, toHttpException } from './tickets.controller';
+import { ConsultaModalidadEditable } from '../../application/services/modalidad-editable';
 import { accionesPorRuta } from '../../../shared/test-helpers/acciones-por-ruta';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
@@ -170,6 +171,7 @@ type DependenciasControlador = {
   bloqueoRepo: {
     estaBloqueadoPorCompra: Mock<IBloqueoTicketRepository['estaBloqueadoPorCompra']>;
   };
+  modalidadEditable: { esEditable: Mock<ConsultaModalidadEditable['esEditable']> };
 };
 
 type ControladorDeTest = DependenciasControlador & {
@@ -232,6 +234,10 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
         .fn<IBloqueoTicketRepository['estaBloqueadoPorCompra']>()
         .mockResolvedValue(false),
     },
+    // Default editable: solo los tests de `modalidadEditable` en el detalle lo pisan.
+    modalidadEditable: overrides.modalidadEditable ?? {
+      esEditable: vi.fn<ConsultaModalidadEditable['esEditable']>().mockResolvedValue(true),
+    },
   };
   // `findAll`/`exportar` resuelven nombres batch de los items — con lista vacía
   // devuelve un Map vacío sin N+1.
@@ -282,6 +288,7 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     casoReal(RecuperarTicketUseCase, deps.recuperarTicket),
     casoReal(ListarAgentesFiltroTicketsUseCase, deps.listarAgentes),
     deps.bloqueoRepo,
+    deps.modalidadEditable,
   );
   return { controller, ...deps, usuarioMasterChecker };
 }
@@ -1353,6 +1360,26 @@ describe('TicketsController.findOne — bloqueo por compra en el detalle (odd/ti
       expect(bloqueoRepo.estaBloqueadoPorCompra).toHaveBeenCalledWith('ticket-bloq-1');
       // L19: solo el booleano; ningún campo nuevo nombra compras.
       expect(Object.keys(respuesta).filter((clave) => /compra/i.test(clave))).toEqual([]);
+    },
+  );
+
+  it.each([true, false])(
+    'el detalle informa modalidadEditable=%s, tal como lo decide la consulta (odd/edilicia-obra-externa, S1)',
+    async (editable) => {
+      const obtenerTicket = {
+        execute: vi
+          .fn<ObtenerTicketUseCase['execute']>()
+          .mockResolvedValue(Result.ok(ticketVisible())),
+      };
+      const modalidadEditable = {
+        esEditable: vi.fn<ConsultaModalidadEditable['esEditable']>().mockResolvedValue(editable),
+      };
+      const { controller } = buildController({ obtenerTicket, modalidadEditable });
+
+      const respuesta = await controller.findOne(LECTOR_SIN_COMPRAS, 'ticket-bloq-1');
+
+      expect(respuesta.modalidadEditable).toBe(editable);
+      expect(modalidadEditable.esEditable).toHaveBeenCalledWith('ticket-bloq-1');
     },
   );
 

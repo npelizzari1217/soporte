@@ -115,6 +115,7 @@ import { AsignarTecnicoTareaUseCase } from './application/use-cases/asignar-tecn
 import { CompletarTareaUseCase } from './application/use-cases/completar-tarea.use-case';
 import { AvanzarEstadoPorTareasService } from './application/services/avanzar-estado-por-tareas.service';
 import { VerificadorTicketEditable } from './application/services/ticket-editable-para-tareas';
+import { ConsultaModalidadEditable } from './application/services/modalidad-editable';
 import { DescompletarTareaUseCase } from './application/use-cases/descompletar-tarea.use-case';
 import { EliminarTareaUseCase } from './application/use-cases/eliminar-tarea.use-case';
 import { ListarTareasTicketUseCase } from './application/use-cases/listar-tareas-ticket.use-case';
@@ -273,6 +274,14 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
     { provide: TAREA_TICKET_REPOSITORY, useClass: PrismaTareaTicketRepository },
     // odd/ticket-cerrado-solo-lectura: tareas de solo lectura en CERRADO/CANCELADO o bloqueada por compra.
     { provide: BLOQUEO_TICKET_REPOSITORY, useClass: PrismaBloqueoTicketRepository },
+    {
+      provide: ConsultaModalidadEditable,
+      useFactory: (
+        tareaRepo: ITareaTicketRepository,
+        bloqueoRepo: IBloqueoTicketRepository,
+      ): ConsultaModalidadEditable => new ConsultaModalidadEditable(tareaRepo, bloqueoRepo),
+      inject: [TAREA_TICKET_REPOSITORY, BLOQUEO_TICKET_REPOSITORY],
+    },
     {
       provide: VerificadorTicketEditable,
       useFactory: (estadoRepo: IEstadoRepository, bloqueoRepo: IBloqueoTicketRepository) =>

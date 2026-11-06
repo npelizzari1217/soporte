@@ -106,6 +106,7 @@ function crearReparacion(
     cantidadComentarios: 0,
     bloqueada: false,
     comprasQueBloquean: [],
+    modalidadEditable: true,
     sectorNombre: null,
   };
 }

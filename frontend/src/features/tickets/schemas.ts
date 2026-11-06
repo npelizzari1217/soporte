@@ -10,6 +10,7 @@ import {
   TICKET_UBICACION_MAX_LENGTH,
   MENSAJE_TITULO_DEMASIADO_LARGO,
 } from "@/shared/lib/limites-ticket";
+import { MODALIDADES_TICKET } from "./modalidad";
 
 const ubicacionSchema = z
   .string()
@@ -30,6 +31,7 @@ export const crearTicketSchema = z.object({
   ticketReferenciaId: z.string().uuid().optional().or(z.literal("")),
   ubicacion: ubicacionSchema,
   sectorId: sectorIdSchema,
+  modalidad: z.enum(MODALIDADES_TICKET),
 });
 export type CrearTicketFormValues = z.infer<typeof crearTicketSchema>;
 
@@ -42,6 +44,8 @@ export const editarTicketSchema = z.object({
   prioridadId: z.string().uuid("Elija una prioridad"),
   ubicacion: ubicacionSchema,
   sectorId: sectorIdSchema,
+  /** Opcional: con el control deshabilitado no llega valor (odd/edilicia-obra-externa, S1). */
+  modalidad: z.enum(MODALIDADES_TICKET).optional(),
 });
 export type EditarTicketFormValues = z.infer<typeof editarTicketSchema>;
 

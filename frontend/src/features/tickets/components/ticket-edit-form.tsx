@@ -18,6 +18,7 @@ import { useReaplicarAlResolver } from "@/shared/hooks/use-reaplicar-al-resolver
 import { editarTicketSchema, type EditarTicketFormValues } from "../schemas";
 import type { EditarTicketDto, Prioridad } from "../types";
 import type { Sector } from "@/features/sectores/types";
+import { CampoModalidad } from "./campo-modalidad";
 
 /**
  * Arma el PATCH a partir del formulario. Un campo opcional vacío viaja como
@@ -26,15 +27,21 @@ import type { Sector } from "@/features/sectores/types";
  * (odd/ticket-unificado, S1).
  *
  * @param values Valores del formulario.
+ * @param modalidadEditable `false` omite la modalidad del body.
  * @returns El body de `PATCH /tickets/:id`.
  */
-export function aEditarTicketDto(values: EditarTicketFormValues): EditarTicketDto {
+export function aEditarTicketDto(
+  values: EditarTicketFormValues,
+  modalidadEditable: boolean,
+): EditarTicketDto {
   return {
     titulo: values.titulo,
     descripcion: values.descripcion,
     prioridadId: values.prioridadId,
     ubicacion: values.ubicacion || null,
     sectorId: values.sectorId || null,
+    // Con el control deshabilitado la modalidad no viaja: ausente no toca (odd/edilicia-obra-externa).
+    ...(modalidadEditable && values.modalidad !== undefined && { modalidad: values.modalidad }),
   };
 }
 
@@ -61,6 +68,8 @@ export interface TicketEditFormProps {
    * cuando el catálogo de activos no lo trae.
    */
   sectorNombre?: string | null;
+  /** `Ticket.modalidadEditable` del detalle; ausente = no editable, el lado seguro. */
+  modalidadEditable?: boolean;
   onSubmit: (dto: EditarTicketDto) => void;
   onCancel: () => void;
   isSubmitting: boolean;
@@ -71,6 +80,7 @@ export function TicketEditForm({
   prioridades,
   sectores,
   sectorNombre = null,
+  modalidadEditable = false,
   onSubmit,
   onCancel,
   isSubmitting,
@@ -130,7 +140,7 @@ export function TicketEditForm({
 
   return (
     <form
-      onSubmit={handleSubmit((values) => onSubmit(aEditarTicketDto(values)))}
+      onSubmit={handleSubmit((values) => onSubmit(aEditarTicketDto(values, modalidadEditable)))}
       className="flex flex-col gap-3"
       noValidate
     >
@@ -186,6 +196,8 @@ export function TicketEditForm({
           ))}
         </Select>
       </div>
+
+      <CampoModalidad id="edit-modalidad" registro={register("modalidad")} editable={modalidadEditable} />
 
       <div className="flex gap-2">
         <Button type="submit" isLoading={isSubmitting}>

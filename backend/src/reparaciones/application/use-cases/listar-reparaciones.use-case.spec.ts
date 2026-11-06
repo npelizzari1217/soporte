@@ -303,6 +303,35 @@ describe('ListarReparacionesUseCase — hidratación por lote (el listado NO pue
   });
 });
 
+describe('ListarReparacionesUseCase — modalidadEditable (odd/edilicia-obra-externa, S1)', () => {
+  // La compra completada no bloquea, pero sí cuenta: la regla es "sin compras vinculadas".
+  const completada: CompraVinculada = {
+    ...compraActiva,
+    compraId: 'compra-completa',
+    items: [{ estadoAprobacion: 'APROBADO', comprado: true, entregado: true, esServicio: false }],
+  };
+
+  it('es false con una tarea activa o con una compra vinculada que no bloquea; true sin ninguna', async () => {
+    const { useCase, tareaRepo, reparacionCompraRepo } = armar(4);
+    const borrada = makeTarea('t-3', 'Tarea borrada');
+    borrada.softDelete();
+    tareaRepo.listarPorTickets.mockResolvedValue(
+      new Map([
+        ['t-0', [makeTarea('t-0', 'Pintar')]],
+        ['t-3', [borrada]],
+      ]),
+    );
+    reparacionCompraRepo.findComprasVinculadasByTicketIds.mockResolvedValue(
+      new Map([['t-1', [completada]]]),
+    );
+
+    const items = (await useCase.execute(SIN_RESTRICCION)).getValue();
+
+    expect(items.map((item) => item.modalidadEditable)).toEqual([false, false, true, true]);
+    expect(items[1].bloqueada).toBe(false);
+  });
+});
+
 describe('ListarReparacionesUseCase — compras que bloquean y su tipo (odd/compras-por-tipo, S2)', () => {
   const oculta: CompraVinculada = {
     ...compraActiva,

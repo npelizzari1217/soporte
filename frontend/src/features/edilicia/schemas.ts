@@ -6,6 +6,7 @@ import {
 } from "@/shared/lib/limites-ticket";
 import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
 import { UBICACION_MAX_LENGTH } from "./limites";
+import { MODALIDADES_TICKET } from "@/features/tickets/modalidad";
 
 /** Campos comunes del alta y la edición de una reparación. */
 const reparacionBaseSchema = z.object({
@@ -29,11 +30,15 @@ const reparacionBaseSchema = z.object({
  */
 export const crearReparacionSchema = reparacionBaseSchema.extend({
   tipoId: z.string().uuid().optional().or(z.literal("")),
+  modalidad: z.enum(MODALIDADES_TICKET),
 });
 export type CrearReparacionFormValues = z.infer<typeof crearReparacionSchema>;
 
 /** Mismos campos y topes que el alta: espejo de `EditarReparacionHttpDto` (odd/detalle-ticket-legible). */
-export const editarReparacionSchema = reparacionBaseSchema;
+export const editarReparacionSchema = reparacionBaseSchema.extend({
+  /** Opcional: con el control deshabilitado no llega valor (odd/edilicia-obra-externa, S1). */
+  modalidad: z.enum(MODALIDADES_TICKET).optional(),
+});
 export type EditarReparacionFormValues = z.infer<typeof editarReparacionSchema>;
 
 /** Espeja `CreateComentarioReparacionHttpDto`: recorta primero, después valida (un texto de puros espacios no es un comentario). */

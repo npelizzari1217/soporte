@@ -24,6 +24,8 @@ export interface TicketEditDialogProps {
   prioridades: Prioridad[] | undefined;
   /** Pass-through hacia `TicketEditForm`: nombre del sector vigente, aunque esté desactivado. */
   sectorNombre: string | null;
+  /** Pass-through hacia `TicketEditForm`: `Ticket.modalidadEditable` del detalle. */
+  modalidadEditable?: boolean;
   onSubmit: (dto: EditarTicketDto) => void;
   isSubmitting: boolean;
 }
@@ -32,6 +34,7 @@ export function TicketEditDialog({
   defaultValues,
   prioridades,
   sectorNombre,
+  modalidadEditable,
   onSubmit,
   isSubmitting,
 }: TicketEditDialogProps) {
@@ -63,6 +66,7 @@ export function TicketEditDialog({
           // `data` tal cual: `undefined` mientras no resolvió (ver JSDoc de la prop).
           sectores={sectoresQuery.data}
           sectorNombre={sectorNombre}
+          modalidadEditable={modalidadEditable}
           onSubmit={handleSubmit}
           onCancel={() => setOpen(false)}
           isSubmitting={isSubmitting}
