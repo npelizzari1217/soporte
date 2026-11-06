@@ -36,6 +36,7 @@ import {
   TicketSoloComentariosError,
 } from '../../domain/errors/tickets.errors';
 import { PrismaBloqueoTicketRepository } from '../../infrastructure/persistence/prisma/prisma-bloqueo-ticket.repository';
+import { PrismaCertificadoAvanceRepository } from '../../infrastructure/persistence/prisma/prisma-certificado-avance.repository';
 import { PrismaEstadoRepository } from '../../infrastructure/persistence/prisma/prisma-estado.repository';
 import { PrismaOperacionTicketRepository } from '../../infrastructure/persistence/prisma/prisma-operacion-ticket.repository';
 import { PrismaTareaTicketRepository } from '../../infrastructure/persistence/prisma/prisma-tarea-ticket.repository';
@@ -71,6 +72,7 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
   const operacionRepo = new PrismaOperacionTicketRepository(tenantContext);
   const tipoOperacionRepo = new PrismaTipoOperacionRepository(tenantContext);
   const bloqueoRepo = new PrismaBloqueoTicketRepository(tenantContext);
+  const certificadoRepo = new PrismaCertificadoAvanceRepository(tenantContext);
   const reparacionCompraRepo = new PrismaTicketCompraRepository(tenantContext);
   const estadoRepo = new PrismaEstadoRepository(tenantContext);
   const txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => undefined });
@@ -96,6 +98,7 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
     estadoRepo,
     tareaRepo,
     bloqueoRepo,
+    certificadoRepo,
     operacionRepo,
     tipoOperacionRepo,
     txRunner,
@@ -375,6 +378,7 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
       estadoRepo,
       tareaRepo,
       bloqueoRepo,
+      certificadoRepo,
       operacionRepo,
       tipoOperacionRepo,
       txRunner,

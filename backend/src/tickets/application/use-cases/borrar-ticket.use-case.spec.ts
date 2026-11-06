@@ -4,6 +4,7 @@
  * fakes en memoria: se afirma sobre el estado final (`deleted_at` del ticket y entradas del
  * historial), no sobre las llamadas.
  */
+import { CertificadoAvanceEntity } from '../../domain/entities/certificado-avance.entity';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
@@ -66,6 +67,8 @@ function escenario(
   opciones: {
     tareas?: TareaTicketEntity[];
     compras?: Record<string, string[]>;
+    /** Certificados de avance por ticket (odd/decisiones-obra-externa, S1). */
+    certificados?: CertificadoAvanceEntity[];
     /** Estado de los tickets al cargarlos; por defecto EN_PROCESO. */
     estadoId?: string;
     /** Lo que otra transacción escribió mientras el borrado esperaba el lock del ticket. */
@@ -121,6 +124,13 @@ function escenario(
     {
       comprasVinculadas: async (ticketId: string) => compras[ticketId] ?? [],
       generadoPorPlanPreventivo: async (ticketId: string) => generadosPorPlan.has(ticketId),
+    },
+    {
+      listarPorTicket: async (ticketId: string) => {
+        // Se lee con el lock tomado: un certificado emitido mientras se esperaba tiene que contar.
+        expect(enTransaccion).toBe(true);
+        return (opciones.certificados ?? []).filter((c) => c.ticketId === ticketId);
+      },
     },
     {
       save: async (operacion: OperacionTicketEntity) => {
@@ -353,6 +363,65 @@ describe('BorrarTicketUseCase', () => {
       'No se puede borrar el ticket: antes hay que completar o eliminar sus 2 tareas pendientes ' +
         'y desvincular del ticket la compra COM-2026-00003.',
     );
+  });
+
+  describe('certificados de avance (odd/decisiones-obra-externa, S1)', () => {
+    const certificado = (numero: number, anulado = false): CertificadoAvanceEntity => {
+      const emitido = CertificadoAvanceEntity.emitir({
+        ticketId: 't-soporte',
+        numero,
+        emitidoPorId: ACTOR,
+        emitidoEn: AHORA,
+        tareas: [{ tareaId: `tarea-${numero}`, peso: 10 }],
+      });
+      if (anulado) emitido.anular(ACTOR, 'Se certificó de más', AHORA);
+      return emitido;
+    };
+
+    it('con un certificado vigente: 422 que pide anularlo, y nada cambia', async () => {
+      const { useCase, tickets, operaciones } = escenario({ certificados: [certificado(1)] });
+
+      const result = await useCase.execute({
+        ticketId: 't-soporte',
+        ...actorQueBorraSoloSoporte(),
+      });
+
+      expect(result.getError()).toBeInstanceOf(TicketConPendientesNoBorrableError);
+      expect(result.getError().message).toBe(
+        'No se puede borrar el ticket: antes hay que anular su certificado de avance vigente.',
+      );
+      expect(tickets.get('t-soporte')?.isDeleted()).toBe(false);
+      expect(operaciones).toEqual([]);
+    });
+
+    it('cuenta solo los vigentes, y el 422 los nombra junto con las compras', async () => {
+      const { useCase } = escenario({
+        certificados: [certificado(1), certificado(2, true), certificado(3)],
+        compras: { 't-soporte': ['COM-2026-00003'] },
+      });
+
+      const result = await useCase.execute({
+        ticketId: 't-soporte',
+        ...actorQueBorraSoloSoporte(),
+      });
+
+      expect(result.getError().message).toBe(
+        'No se puede borrar el ticket: antes hay que desvincular del ticket la compra ' +
+          'COM-2026-00003 y anular sus 2 certificados de avance vigentes.',
+      );
+    });
+
+    it('con todos los certificados anulados, se borra', async () => {
+      const { useCase, tickets } = escenario({ certificados: [certificado(1, true)] });
+
+      const result = await useCase.execute({
+        ticketId: 't-soporte',
+        ...actorQueBorraSoloSoporte(),
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(tickets.get('t-soporte')?.isDeleted()).toBe(true);
+    });
   });
 
   it('las tareas completadas y las dadas de baja no frenan el borrado (L40)', async () => {

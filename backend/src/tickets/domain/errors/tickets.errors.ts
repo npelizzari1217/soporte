@@ -579,8 +579,13 @@ export class TicketConPendientesNoBorrableError extends DomainError {
   /**
    * @param tareasPendientes Cantidad de tareas activas sin completar.
    * @param comprasVinculadas Números de las compras vinculadas al ticket.
+   * @param certificadosVigentes Cantidad de certificados de avance sin anular.
    */
-  constructor(tareasPendientes: number, comprasVinculadas: readonly string[]) {
+  constructor(
+    tareasPendientes: number,
+    comprasVinculadas: readonly string[],
+    certificadosVigentes: number,
+  ) {
     const pendientes: string[] = [];
     if (tareasPendientes > 0) {
       pendientes.push(
@@ -594,6 +599,13 @@ export class TicketConPendientesNoBorrableError extends DomainError {
         `desvincular del ticket ${
           comprasVinculadas.length === 1 ? 'la compra' : 'las compras'
         } ${comprasVinculadas.join(', ')}`,
+      );
+    }
+    if (certificadosVigentes > 0) {
+      pendientes.push(
+        certificadosVigentes === 1
+          ? 'anular su certificado de avance vigente'
+          : `anular sus ${certificadosVigentes} certificados de avance vigentes`,
       );
     }
     super(`No se puede borrar el ticket: antes hay que ${pendientes.join(' y ')}.`);
