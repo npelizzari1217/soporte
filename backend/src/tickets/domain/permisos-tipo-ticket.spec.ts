@@ -72,6 +72,14 @@ describe('plantillas por tipo (T9a, L50.4)', () => {
 });
 
 describe('problemaDeFilaDeTipo (T7, S3)', () => {
+  it('CERTIFICAR se concede con Ver y sin Ver no (odd/edilicia-obra-externa, S6)', () => {
+    expect(problemaDeFilaDeTipo(['LECTURA', 'CERTIFICAR'])).toBeNull();
+    expect(problemaDeFilaDeTipo(['CERTIFICAR'])).toEqual({
+      tipo: 'sin-ver',
+      acciones: ['CERTIFICAR'],
+    });
+  });
+
   it('una fila vacía, o con Ver y cualquier otra acción del vocabulario, es válida', () => {
     expect(problemaDeFilaDeTipo([])).toBeNull();
     expect(problemaDeFilaDeTipo(['LECTURA'])).toBeNull();
