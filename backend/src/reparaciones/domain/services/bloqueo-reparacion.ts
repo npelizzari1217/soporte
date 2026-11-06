@@ -51,7 +51,8 @@ export interface CompraVinculada extends CompraParaDerivacion {
  * Una compra cuyos ítems activos son TODOS de servicio es un presupuesto de
  * obra (odd/edilicia-obra-externa, S2): el trabajo avanza mientras se ejecuta,
  * así que no frena el ticket, cualquiera sea su modalidad. Una compra mixta
- * sigue bloqueando, porque espera insumos.
+ * sigue bloqueando, porque espera insumos. Un ítem RECHAZADO no cuenta para
+ * esa decisión: no se va a comprar (odd/decisiones-obra-externa, S3).
  *
  * Caso aceptado a propósito (no un bug): una compra vinculada SIN ítems
  * cargados (`items: []`) bloquea igual — `derivarGrupoEstadoCompra` cae en
@@ -71,10 +72,12 @@ export function comprasQueBloquean(
 }
 
 /**
- * `true` si la compra tiene ítems y todos son de servicio. Una compra sin ítems NO es solo de
- * servicio: "todos" sobre un conjunto vacío es verdadero por vacuidad, y la convertiría en una
- * compra que no bloquea sin que nadie haya dicho qué contrata.
+ * `true` si la compra tiene ítems no rechazados y todos son de servicio. Los RECHAZADOS se
+ * descartan porque no se van a comprar (S3). Sin ítems vigentes NO es solo de servicio: "todos"
+ * sobre un conjunto vacío es verdadero por vacuidad, y la convertiría en una compra que no
+ * bloquea sin que nadie haya dicho qué contrata.
  */
 function esSoloDeServicio(compra: CompraVinculada): boolean {
-  return compra.items.length > 0 && compra.items.every((item) => item.esServicio);
+  const vigentes = compra.items.filter((item) => item.estadoAprobacion !== 'RECHAZADO');
+  return vigentes.length > 0 && vigentes.every((item) => item.esServicio);
 }

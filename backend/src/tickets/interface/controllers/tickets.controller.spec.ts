@@ -1563,7 +1563,7 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     ],
     [
       'TicketConPendientesNoBorrableError',
-      () => new TicketsErrors.TicketConPendientesNoBorrableError(1, []),
+      () => new TicketsErrors.TicketConPendientesNoBorrableError(1, [], 0),
       422,
     ],
     [

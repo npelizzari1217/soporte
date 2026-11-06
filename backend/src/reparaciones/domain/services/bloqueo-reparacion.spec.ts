@@ -130,6 +130,45 @@ describe('comprasQueBloquean', () => {
     });
   });
 
+  describe('bien rechazado junto a servicios (odd/decisiones-obra-externa, S3)', () => {
+    type Item = CompraVinculada['items'][number];
+    const item = (esServicio: boolean, estadoAprobacion: Item['estadoAprobacion']): Item => ({
+      estadoAprobacion,
+      comprado: false,
+      entregado: false,
+      esServicio,
+    });
+    const activa = (...items: Item[]): CompraVinculada => ({
+      compraId: 'c1',
+      numero: 'C-0001',
+      tipoTicketId: null,
+      cancelada: false,
+      items,
+    });
+
+    it('un bien RECHAZADO junto a servicios no bloquea', () => {
+      expect(
+        comprasQueBloquean([activa(item(true, 'PENDIENTE'), item(false, 'RECHAZADO'))]),
+      ).toEqual([]);
+    });
+
+    it('un bien vigente sigue bloqueando aunque haya otro bien RECHAZADO', () => {
+      const compra = activa(
+        item(true, 'PENDIENTE'),
+        item(false, 'RECHAZADO'),
+        item(false, 'APROBADO'),
+      );
+
+      expect(comprasQueBloquean([compra])).toEqual([compra]);
+    });
+
+    it('un servicio RECHAZADO no vuelve de servicio a una compra de bienes', () => {
+      const compra = activa(item(true, 'RECHAZADO'), item(false, 'PENDIENTE'));
+
+      expect(comprasQueBloquean([compra])).toEqual([compra]);
+    });
+  });
+
   // Test opcional del tasks (WU1.8) — lectura de fuente que confirma que
   // `bloqueo-reparacion.ts` no reimplementa la regla en vez de delegarla.
   it('no reimplementa la regla de estado en su propio cuerpo (lectura de fuente)', async () => {

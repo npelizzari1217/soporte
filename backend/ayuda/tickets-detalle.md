@@ -85,6 +85,8 @@ resolver antes:
 
 - Tiene **tareas pendientes**: hay que completarlas o eliminarlas.
 - Tiene **compras vinculadas**: hay que desvincularlas.
+- Tiene **certificados de avance vigentes**: hay que anularlos, porque ya se
+  enviaron a pagar.
 - Es un ticket de **mantenimiento preventivo**: no se borra nunca, ni siquiera
   un administrador, porque lo genera el sistema a partir de su plan.
 

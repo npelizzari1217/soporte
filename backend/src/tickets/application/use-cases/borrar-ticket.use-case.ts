@@ -8,6 +8,7 @@ import {
   TicketPreventivoNoBorrableError,
 } from '../../domain/errors/tickets.errors';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { ICertificadoAvanceRepository } from '../../domain/ports/i-certificado-avance.repository';
 import { IBloqueoTicketRepository } from '../../domain/ports/i-bloqueo-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
@@ -35,7 +36,8 @@ export interface BorrarTicketDto extends AlcanceActorTicket {
  *   actor es el 422 de `TicketSoloComentariosError` (odd/cerrado-solo-comentarios, L11). Va antes
  *   que el de pendientes: en esos estados ese actor tampoco puede resolverlas.
  * - Si no, se borra salvo que tenga tareas pendientes (activas y sin completar) o
- *   compras vinculadas: 422 que nombra qué resolver (L40). Las tareas completadas,
+ *   compras vinculadas o certificados de avance vigentes (odd/decisiones-obra-externa, S1): 422
+ *   que nombra qué resolver (L40). Un certificado vigente ya se envió a pagar: primero se anula. Las tareas completadas,
  *   los adjuntos, los comentarios y el historial no frenan: quedan con el ticket.
  * - Un ticket de mantenimiento preventivo no se borra, ni siquiera un administrador: 422 (L45). Lo
  *   genera el barrido a partir de un plan, y borrarlo haría que el barrido abra otro del mismo
@@ -65,6 +67,7 @@ export class BorrarTicketUseCase {
       IBloqueoTicketRepository,
       'comprasVinculadas' | 'generadoPorPlanPreventivo'
     >,
+    private readonly certificadoRepo: Pick<ICertificadoAvanceRepository, 'listarPorTicket'>,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
@@ -102,13 +105,17 @@ export class BorrarTicketUseCase {
       );
       if (modificable.isFail()) return Result.fail(modificable.getError());
 
-      const [tareas, compras] = await Promise.all([
+      const [tareas, compras, certificados] = await Promise.all([
         this.tareaRepo.listarPorTicket(ticket.id),
         this.bloqueoRepo.comprasVinculadas(ticket.id),
+        this.certificadoRepo.listarPorTicket(ticket.id),
       ]);
       const tareasPendientes = tareas.filter((tarea) => !tarea.completada).length;
-      if (tareasPendientes > 0 || compras.length > 0) {
-        return Result.fail(new TicketConPendientesNoBorrableError(tareasPendientes, compras));
+      const certificadosVigentes = certificados.filter((certificado) => certificado.vigente).length;
+      if (tareasPendientes > 0 || compras.length > 0 || certificadosVigentes > 0) {
+        return Result.fail(
+          new TicketConPendientesNoBorrableError(tareasPendientes, compras, certificadosVigentes),
+        );
       }
 
       if (!(await this.ticketRepo.borrarSiActivo(ticket.id, this.ahora()))) {
