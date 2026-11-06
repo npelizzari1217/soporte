@@ -19,6 +19,7 @@ function buildItem(overrides: Partial<ItemCompra> = {}): ItemCompra {
     descripcion: "Insumo original",
     insumoId: null,
     insumoSeguimiento: null,
+    esServicio: false,
     cantidad: 2,
     proveedor: "ACME",
     monto: 100,
@@ -579,5 +580,57 @@ describe("ItemEditDialog", () => {
 
       await waitFor(() => expect(capturado.body.insumoId).toBe("ins-2"));
     });
+  });
+});
+
+describe("ItemEditDialog — ítem de servicio (odd/edilicia-obra-externa, S2)", () => {
+  function capturarPatch(): { body: Record<string, unknown> | null } {
+    const capturado: { body: Record<string, unknown> | null } = { body: null };
+    server.use(
+      http.get("/api/insumos", () => HttpResponse.json([])),
+      http.patch(`/api/compras/${COMPRA_ID}/items/item-1`, async ({ request }) => {
+        capturado.body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(buildItem());
+      }),
+    );
+    return capturado;
+  }
+
+  const casilla = () => screen.getByRole("checkbox", { name: /es un servicio/i });
+
+  it("con el ítem PENDIENTE, marcarlo limpia y deshabilita el insumo, y manda esServicio=true con insumoId null", async () => {
+    const capturado = capturarPatch();
+    renderWithProviders(<ItemEditDialog compraId={COMPRA_ID} item={buildItem({ insumoId: "ins-x" })} />, {
+      user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }),
+    });
+
+    const user = await abrirDialog();
+    await waitFor(() => expect(screen.getByLabelText(/insumo \(opcional\)/i)).toHaveValue("ins-x"));
+    await user.click(casilla());
+
+    expect(screen.getByLabelText(/insumo \(opcional\)/i)).toBeDisabled();
+    expect(screen.getByLabelText(/insumo \(opcional\)/i)).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(capturado.body).not.toBeNull());
+    expect(capturado.body).toMatchObject({ esServicio: true, insumoId: null });
+  });
+
+  it("con el ítem APROBADO, la casilla queda deshabilitada con el motivo y esServicio no viaja", async () => {
+    const capturado = capturarPatch();
+    renderWithProviders(
+      <ItemEditDialog compraId={COMPRA_ID} item={buildItem({ estadoAprobacion: "APROBADO", esServicio: true })} />,
+      { user: buildUser({ permisos: ["COMPRAS:MODIFICACION"] }) },
+    );
+
+    const user = await abrirDialog();
+    expect(casilla()).toBeDisabled();
+    expect(casilla()).toBeChecked();
+    expect(screen.getByText("No se puede cambiar: el ítem ya fue aprobado o rechazado.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(capturado.body).not.toBeNull());
+    expect(capturado.body).not.toHaveProperty("esServicio");
+    expect(capturado.body).toMatchObject({ descripcion: "Insumo original" });
   });
 });

@@ -31,6 +31,8 @@ const ITEM_VALIDO = {
   monto: 100,
   moneda: "ARS",
   fechaCotizacion: "2026-01-01",
+  // El formulario la precarga en false, así que un ítem válido siempre la trae.
+  esServicio: false,
 };
 
 describe("schemas de compras — espejo de las reglas del backend", () => {
@@ -238,6 +240,28 @@ describe("schemas de compras — espejo de las reglas del backend", () => {
    * claves que no declara, así que sin él el insumo elegido se caía del payload
    * en silencio y el ítem se guardaba sin vínculo.
    */
+  describe("ítem de servicio (espejo de ItemServicioConInsumoError, odd/edilicia-obra-externa S2)", () => {
+    it.each([
+      ["agregarItemCompra", agregarItemCompraSchema, ITEM_VALIDO],
+      ["editarItemCompra", editarItemCompraSchema, { monto: 100 }],
+    ] as const)("%s rechaza un servicio con insumo, con el error en el insumo", (_n, schema, base) => {
+      const r = schema.safeParse({ ...base, esServicio: true, insumoId: "ins-1" });
+      expect(r.success).toBe(false);
+      if (!r.success) {
+        expect(r.error.issues[0].path).toEqual(["insumoId"]);
+        expect(r.error.issues[0].message).toBe("Un ítem de servicio no puede declarar un insumo del catálogo.");
+      }
+    });
+
+    it.each([
+      ["agregarItemCompra", agregarItemCompraSchema, ITEM_VALIDO],
+      ["editarItemCompra", editarItemCompraSchema, { monto: 100 }],
+    ] as const)("%s acepta un servicio sin insumo y un bien con insumo", (_n, schema, base) => {
+      expect(schema.safeParse({ ...base, esServicio: true, insumoId: "" }).success).toBe(true);
+      expect(schema.safeParse({ ...base, esServicio: false, insumoId: "ins-1" }).success).toBe(true);
+    });
+  });
+
   describe("insumoId del ítem (espejo de @IsOptional @IsUUID)", () => {
     it("agregarItemCompra conserva el insumoId elegido en el dato parseado", () => {
       const r = agregarItemCompraSchema.safeParse({ ...ITEM_VALIDO, insumoId: "ins-1" });
