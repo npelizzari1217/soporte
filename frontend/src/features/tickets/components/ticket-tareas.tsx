@@ -115,6 +115,10 @@ export function TicketTareas({
   const elegibles = elegiblesQuery.data ?? [];
   // `items` son las tareas activas: la misma base sobre la que el backend acota la suma.
   const sumaPesos = items.reduce((suma, tarea) => suma + tarea.peso, 0);
+  // El estado puede llegar a «Resuelto» por tareas aunque el avance por peso no llegue a 100: se
+  // avisa sin bloquear (odd/decisiones-obra-externa, S2).
+  const pesosIncompletos =
+    conPeso && avance.total > 0 && avance.completadas === avance.total && sumaPesos < PESO_TAREAS_MAX;
 
   function opcionesTecnico(tarea: TareaTicket) {
     // El técnico actual puede ya no ser elegible: se lo muestra igual para no mentir.
@@ -151,6 +155,12 @@ export function TicketTareas({
         <p className="text-xs text-muted-foreground">
           Pesos asignados: {sumaPesos} % de {PESO_TAREAS_MAX} %. El avance es la suma de los pesos de las tareas
           completadas.
+        </p>
+      )}
+      {pesosIncompletos && (
+        <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-foreground">
+          Todas las tareas están completadas, pero los pesos suman {sumaPesos} %: faltan{" "}
+          {PESO_TAREAS_MAX - sumaPesos} % para llegar a {PESO_TAREAS_MAX} %.
         </p>
       )}
       {avance.total > 0 && (

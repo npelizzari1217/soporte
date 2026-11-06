@@ -535,6 +535,56 @@ describe("TicketTareas — peso en un ticket EXTERNA (odd/edilicia-obra-externa,
   });
 });
 
+describe("TicketTareas — aviso de pesos incompletos (odd/decisiones-obra-externa, S2)", () => {
+  const AVISO = /pesos suman/;
+  const completa = (id: string, peso: number) =>
+    tarea({ id, descripcion: `Tarea ${id}`, peso, completada: true, completadaEn: "2026-10-02T13:00:00.000Z" });
+
+  function render(items: TareaTicket[], modalidad?: "EXTERNA") {
+    mockTareas(items);
+    return renderConPermisos(
+      <TicketTareas ticketId={TICKET_ID} asignadoId={RESPONSABLE} tipoId={TIPO} modalidad={modalidad} />,
+      { user: responsable, permisos: CON_MODIFICACION },
+    );
+  }
+
+  it("en EXTERNA, con todas completadas y la suma debajo de 100, avisa cuánto falta", async () => {
+    render([completa("a", 40), completa("b", 20)], "EXTERNA");
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Todas las tareas están completadas, pero los pesos suman 60 %: faltan 40 % para llegar a 100 %.",
+    );
+  });
+
+  it("con una tarea pendiente no avisa", async () => {
+    render([completa("a", 40), tarea({ id: "b", descripcion: "Tarea b", peso: 20 })], "EXTERNA");
+
+    await screen.findByText("Tarea b");
+    expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
+  });
+
+  it("con la suma en 100 no avisa", async () => {
+    render([completa("a", 60), completa("b", 40)], "EXTERNA");
+
+    await screen.findByText("Tarea b");
+    expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
+  });
+
+  it("en EXTERNA sin tareas no avisa", async () => {
+    render([], "EXTERNA");
+
+    await screen.findByText("Sin tareas todavía.");
+    expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
+  });
+
+  it("en INTERNA no avisa, aunque las tareas traigan peso", async () => {
+    render([completa("a", 40), completa("b", 20)]);
+
+    await screen.findByText("Tarea b");
+    expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
+  });
+});
+
 describe("TicketTareas — tarea certificada (odd/edilicia-obra-externa, S8)", () => {
   beforeEach(() => vi.mocked(toast.error).mockClear());
 
