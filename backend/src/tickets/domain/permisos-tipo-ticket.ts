@@ -22,6 +22,9 @@ export const ACCIONES_TIPO_TICKET = [
   'OBSERVAR',
   'IMPRESION',
   'BORRADO',
+  // Certificar el avance de un ticket externo (odd/edilicia-obra-externa, S6). Ninguna plantilla de
+  // rol lo trae (L23): lo concede un administrador desde Permisos.
+  'CERTIFICAR',
 ] as const;
 
 /** Código de una acción concedible sobre un tipo de ticket. */

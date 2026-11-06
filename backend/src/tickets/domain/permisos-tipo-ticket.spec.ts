@@ -8,7 +8,7 @@ import {
 } from './permisos-tipo-ticket';
 
 describe('ACCIONES_TIPO_TICKET', () => {
-  it('enumera las 10 acciones por tipo con los códigos del catálogo actual (D4)', () => {
+  it('enumera las 11 acciones por tipo con los códigos del catálogo actual (D4, y CERTIFICAR de odd/edilicia-obra-externa)', () => {
     expect([...ACCIONES_TIPO_TICKET]).toEqual([
       'LECTURA',
       'VER_TODOS',
@@ -20,6 +20,7 @@ describe('ACCIONES_TIPO_TICKET', () => {
       'OBSERVAR',
       'IMPRESION',
       'BORRADO',
+      'CERTIFICAR',
     ]);
   });
 });

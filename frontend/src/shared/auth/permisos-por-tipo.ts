@@ -22,6 +22,7 @@ export const ACCIONES_TIPO_TICKET = [
   "OBSERVAR",
   "IMPRESION",
   "BORRADO",
+  "CERTIFICAR",
 ] as const;
 
 /** Código de una acción concedible sobre un tipo de ticket. */

@@ -62,6 +62,7 @@ describe("permisos por tipo de la sesión (odd/permisos-por-tipo-ticket, T6)", (
       "OBSERVAR",
       "IMPRESION",
       "BORRADO",
+      "CERTIFICAR",
     ]);
   });
 

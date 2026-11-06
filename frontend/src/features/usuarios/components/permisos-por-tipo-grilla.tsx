@@ -49,6 +49,8 @@ export const COLUMNAS_POR_TIPO: readonly { accion: AccionTipoTicket; etiqueta: s
   { accion: "OBSERVAR", etiqueta: "Comentario interno" },
   { accion: "IMPRESION", etiqueta: "Imprimir" },
   { accion: "BORRADO", etiqueta: "Borrar" },
+  // Certificar el avance de una obra externa (odd/edilicia-obra-externa, S6); ningún rol lo trae.
+  { accion: "CERTIFICAR", etiqueta: "Certificar" },
 ];
 
 /** Acciones por tipo de la grilla en edición. */

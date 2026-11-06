@@ -158,9 +158,11 @@ describe("PermisosPorTipoGrilla (odd/permisos-por-tipo-ticket, T7, S5)", () => {
       "Comentario interno",
       "Imprimir",
       "Borrar",
+      "Certificar",
       "Plantilla",
     ]);
     expect(screen.getByRole("checkbox", { name: "Soporte: Borrar" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Soporte: Certificar" })).not.toBeChecked();
     // Un tipo inactivo sigue en la grilla: sus filas deciden (L24).
     expect(within(screen.getByRole("row", { name: /Viejo/ })).getByText("Inactivo")).toBeVisible();
   });
@@ -206,6 +208,28 @@ describe("PermisosPorTipoGrilla (odd/permisos-por-tipo-ticket, T7, S5)", () => {
       tipos: [
         { tipoId: "t-mant", acciones: [] },
         { tipoId: "t-sop", acciones: ["LECTURA", "ALTAS", "BORRADO"] },
+        { tipoId: "t-viejo", acciones: [] },
+      ],
+    });
+  });
+
+  it("Certificar se tilda solo con Ver, y Guardar lo manda (odd/edilicia-obra-externa, S6)", async () => {
+    const user = userEvent.setup();
+    const registro = simularServidor();
+    renderControl();
+
+    const soporteVer = await abrirTiposDeTicket(user);
+    await waitFor(() => expect(soporteVer).toBeChecked());
+    expect(screen.getByRole("checkbox", { name: "Mantenimiento: Certificar" })).toBeDisabled();
+
+    await user.click(screen.getByRole("checkbox", { name: "Soporte: Certificar" }));
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(registro.puts).toHaveLength(1));
+    expect(registro.puts[0]).toEqual({
+      tipos: [
+        { tipoId: "t-mant", acciones: [] },
+        { tipoId: "t-sop", acciones: ["LECTURA", "ALTAS", "CERTIFICAR"] },
         { tipoId: "t-viejo", acciones: [] },
       ],
     });
