@@ -226,20 +226,6 @@ describe("schemas de compras — espejo de las reglas del backend", () => {
     });
   });
 
-  /**
-   * `insumoId` es espejo de `@IsOptional() @IsUUID()` en los dos DTO del ítem
-   * (`AgregarItemCompraHttpDto` y `EditarItemCompraHttpDto`).
-   *
-   * Va como `z.string().optional()` y NO como `.uuid()`, mismo criterio que
-   * `sectorId` en `crearCompraSchema`, que espeja los mismos dos decoradores: el
-   * único origen del valor es el `<select>` del catálogo, así que un id con forma
-   * inválida no es alcanzable desde el formulario y la regla de formato solo
-   * agregaría un mensaje que nadie puede disparar.
-   *
-   * Lo que sí importa es que el campo EXISTA en el schema: zod descarta las
-   * claves que no declara, así que sin él el insumo elegido se caía del payload
-   * en silencio y el ítem se guardaba sin vínculo.
-   */
   describe("ítem de servicio (espejo de ItemServicioConInsumoError, odd/edilicia-obra-externa S2)", () => {
     it.each([
       ["agregarItemCompra", agregarItemCompraSchema, ITEM_VALIDO],
@@ -262,6 +248,20 @@ describe("schemas de compras — espejo de las reglas del backend", () => {
     });
   });
 
+  /**
+   * `insumoId` es espejo de `@IsOptional() @IsUUID()` en los dos DTO del ítem
+   * (`AgregarItemCompraHttpDto` y `EditarItemCompraHttpDto`).
+   *
+   * Va como `z.string().optional()` y NO como `.uuid()`, mismo criterio que
+   * `sectorId` en `crearCompraSchema`, que espeja los mismos dos decoradores: el
+   * único origen del valor es el `<select>` del catálogo, así que un id con forma
+   * inválida no es alcanzable desde el formulario y la regla de formato solo
+   * agregaría un mensaje que nadie puede disparar.
+   *
+   * Lo que sí importa es que el campo EXISTA en el schema: zod descarta las
+   * claves que no declara, así que sin él el insumo elegido se caía del payload
+   * en silencio y el ítem se guardaba sin vínculo.
+   */
   describe("insumoId del ítem (espejo de @IsOptional @IsUUID)", () => {
     it("agregarItemCompra conserva el insumoId elegido en el dato parseado", () => {
       const r = agregarItemCompraSchema.safeParse({ ...ITEM_VALIDO, insumoId: "ins-1" });

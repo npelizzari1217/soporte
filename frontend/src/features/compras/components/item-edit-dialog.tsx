@@ -118,9 +118,17 @@ export function ItemEditDialog({ compraId, item }: ItemEditDialogProps) {
   // tiene que rearmarse en cada apertura. Sin esto, abrir con el catálogo
   // todavía cargando deja el `<select>` mostrando "Sin insumo" mientras el
   // formulario conserva el insumo real — se aprueba una cosa y se guarda otra.
-  useReaplicarAlResolver(open, insumosQuery.isSuccess, "insumoId", insumoIdVigente, setValue);
-
   const esServicio = watch("esServicio") === true;
+  // Con el servicio ya marcado, el valor a reaplicar es "sin insumo": si el catálogo resuelve DESPUÉS
+  // de marcar la casilla, reponer el insumo vigente dejaría un servicio con insumo que el schema
+  // rechaza (odd/edilicia-obra-externa, L15).
+  useReaplicarAlResolver(
+    open,
+    insumosQuery.isSuccess,
+    "insumoId",
+    esServicio ? "" : insumoIdVigente,
+    setValue,
+  );
 
   function submit(values: EditarItemCompraFormValues) {
     const dto: EditarItemCompraDto = {
@@ -194,6 +202,11 @@ export function ItemEditDialog({ compraId, item }: ItemEditDialogProps) {
                 </option>
               ))}
             </Select>
+            {errors.insumoId && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.insumoId.message}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               {recibido
                 ? "El insumo no se puede cambiar: el ítem ya recibió mercadería y el stock quedó imputado. Para corregir las existencias, usar un ajuste manual en el módulo de insumos."

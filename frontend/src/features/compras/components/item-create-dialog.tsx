@@ -144,6 +144,11 @@ export function ItemCreateDialog({ compraId }: ItemCreateDialogProps) {
                 </option>
               ))}
             </Select>
+            {errors.insumoId && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.insumoId.message}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               Al registrar la recepción de este ítem, el stock del insumo elegido sube solo.
             </p>
