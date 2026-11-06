@@ -274,6 +274,32 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
     await waitFor(() => expect(screen.queryByLabelText("Título")).not.toBeInTheDocument());
   });
 
+  it.each([
+    [true, "habilitada"],
+    [false, "deshabilitada"],
+  ])(
+    "con modalidadEditable=%s del backend, la modalidad del modal queda %s (odd/edilicia-obra-externa, S1)",
+    async (editable) => {
+      server.use(
+        http.get(`/api/tickets/${TICKET_ID}`, () =>
+          HttpResponse.json({ ...TICKET, modalidad: "EXTERNA", modalidadEditable: editable }),
+        ),
+      );
+      const user = userEvent.setup();
+      renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+        user: buildUser({ permisos: ["TICKETS:MODIFICACION"] }),
+      });
+
+      await screen.findByText("Impresora rota");
+      await user.click(screen.getByRole("button", { name: /^editar$/i }));
+      const select = await screen.findByLabelText("Modalidad");
+
+      expect(select).toHaveValue("EXTERNA");
+      if (editable) expect(select).toBeEnabled();
+      else expect(select).toBeDisabled();
+    },
+  );
+
   it("control unificado → PATCH /tickets/:id/asignar-en-proceso con el técnico elegido", async () => {
     let capturedBody: unknown = null;
     server.use(

@@ -86,13 +86,22 @@ function useMutacionTarea<V, R>(
   });
 }
 
+/**
+ * Crear y eliminar cambian cuántas tareas activas tiene el ticket, y de esa cuenta depende
+ * `modalidadEditable` del detalle (odd/edilicia-obra-externa, S1): sin invalidar `["ticket", id]`
+ * la edición ofrece una modalidad que el backend ya rechaza.
+ */
+function conDetalleDelTicket(ticketId: string, opciones: OpcionesMutacionTareas): OpcionesMutacionTareas {
+  return { invalidarTambien: [["ticket", ticketId], ...(opciones.invalidarTambien ?? [])] };
+}
+
 export function useCrearTarea(ticketId: string, opciones: OpcionesMutacionTareas = {}) {
   return useMutacionTarea(
     ticketId,
     (dto: { descripcion: string }) =>
       apiFetch<TareaTicket>(`tickets/${ticketId}/tareas`, { method: "POST", json: dto }),
     "Tarea agregada.",
-    opciones,
+    conDetalleDelTicket(ticketId, opciones),
   );
 }
 
@@ -146,6 +155,6 @@ export function useEliminarTarea(ticketId: string, opciones: OpcionesMutacionTar
     ticketId,
     (tareaId: string) => apiFetch<void>(`tickets/${ticketId}/tareas/${tareaId}`, { method: "DELETE" }),
     "Tarea eliminada.",
-    opciones,
+    conDetalleDelTicket(ticketId, opciones),
   );
 }

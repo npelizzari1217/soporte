@@ -1390,12 +1390,16 @@ describe('TicketsController.findOne — bloqueo por compra en el detalle (odd/ti
         .mockResolvedValue(Result.fail(new TicketNoEncontradoError('ticket-ajeno'))),
     };
     const bloqueoRepo = conBloqueo(true);
-    const { controller } = buildController({ obtenerTicket, bloqueoRepo });
+    const modalidadEditable = {
+      esEditable: vi.fn<ConsultaModalidadEditable['esEditable']>().mockResolvedValue(true),
+    };
+    const { controller } = buildController({ obtenerTicket, bloqueoRepo, modalidadEditable });
 
     await expect(controller.findOne(LECTOR_SIN_COMPRAS, 'ticket-ajeno')).rejects.toBeInstanceOf(
       NotFoundException,
     );
     expect(bloqueoRepo.estaBloqueadoPorCompra).not.toHaveBeenCalled();
+    expect(modalidadEditable.esEditable).not.toHaveBeenCalled();
   });
 
   it('el listado no trae bloqueada: es un dato del detalle', async () => {
