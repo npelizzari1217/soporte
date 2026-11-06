@@ -555,6 +555,24 @@ describe("TicketTareas — tarea certificada (odd/edilicia-obra-externa, S8)", (
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(mensaje));
   });
 
+  it("el 422 de eliminar una tarea certificada se muestra con el mensaje del servidor", async () => {
+    const user = userEvent.setup();
+    const mensaje = "La tarea «Cambiar el disco» está en un certificado vigente: anule el certificado antes de eliminarla.";
+    mockTareas();
+    server.use(
+      http.delete(`/api/tickets/${TICKET_ID}/tareas/ta1`, () =>
+        HttpResponse.json({ statusCode: 422, message: mensaje, error: "Unprocessable Entity" }, { status: 422 }),
+      ),
+    );
+    renderTareas();
+
+    await user.click(await screen.findByRole("button", { name: "Eliminar tarea Cambiar el disco" }));
+    await user.click(screen.getByRole("button", { name: "Eliminar" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(mensaje));
+    expect(toast.error).not.toHaveBeenCalledWith("Ese técnico no puede tomar tareas de este ticket.");
+  });
+
   it("caso hermano: el 422 de asignar técnico conserva su texto propio", async () => {
     const user = userEvent.setup();
     mockTareas();

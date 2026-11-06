@@ -19,8 +19,8 @@
  *
  * Errores: el `message` de Nest para tareas lleva ids crudos ("La tarea
  * "<uuid>" ya está completada."), así que 403/404/409/422 se traducen a un
- * toast propio por código (salvo el 422 del peso, que trae un mensaje legible y se muestra tal
- * cual); el resto sigue `notifyError`. Un 404 o un 409 dicen
+ * toast propio por código (salvo el 422 de peso, eliminar y descompletar, que trae un mensaje
+ * legible y se muestra tal cual); el resto sigue `notifyError`. Un 404 o un 409 dicen
  * que la lista quedó vieja, y un 403 puede venir de una tarea que cambió de
  * técnico en el medio (JD-S2), así que los tres también la refrescan.
  */
@@ -79,8 +79,8 @@ function useMutacionTarea<V, R>(
       notifySuccess(mensajeExito);
     },
     onError: (error: unknown) => {
-      // Los 422 del peso ya vienen en lenguaje del usuario y sin ids: se muestran tal cual, porque el
-      // texto fijo del 422 habla del técnico (odd/edilicia-obra-externa, S9).
+      // Los 422 de peso, eliminar y descompletar ya vienen en lenguaje del usuario y sin ids: se
+      // muestran tal cual, porque el texto fijo del 422 habla del técnico (odd/edilicia-obra-externa).
       if (mensaje422DelServidor && error instanceof ApiError && error.statusCode === 422) {
         return toast.error(error.message);
       }
