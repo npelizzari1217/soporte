@@ -444,6 +444,42 @@ describe('TicketsController.findAll — alcance por tipo (odd/permisos-por-tipo-
   });
 });
 
+describe('TicketsController — filtro Desde/Hasta por día argentino (odd/autor-y-filtro-fechas, S2)', () => {
+  const RANGO = {
+    fechaDesde: new Date('2026-01-01T03:00:00.000Z'),
+    fechaHasta: new Date('2027-01-01T02:59:59.999Z'),
+  };
+
+  it('el listado convierte las fechas solas en el año entero en Argentina', async () => {
+    const { controller, listarTickets } = buildController();
+
+    await controller.findAll(ROOT, { fechaDesde: '2026-01-01', fechaHasta: '2026-12-31' });
+
+    expect(listarTickets.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ filtros: expect.objectContaining(RANGO) }),
+    );
+  });
+
+  it('la exportación usa los mismos bordes que el listado', async () => {
+    const exportarTickets = { execute: vi.fn<ExportarTicketsUseCase['execute']>() };
+    exportarTickets.execute.mockResolvedValue(
+      Result.ok({ contenido: 'Número', nombreArchivo: 'tickets.csv' }),
+    );
+    const { controller } = buildController({ exportarTickets });
+
+    await controller.exportar(
+      ROOT,
+      { fechaDesde: '2026-01-01', fechaHasta: '2026-12-31' },
+      { setHeader: () => undefined },
+    );
+
+    expect(exportarTickets.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ filtros: expect.objectContaining(RANGO) }),
+      'csv',
+    );
+  });
+});
+
 describe('TicketsController — GET /tickets/agentes (filtro "Asignado" del listado)', () => {
   it('delega con el clienteId del JWT, el ?tipo= y el alcance por tipo del actor', async () => {
     const agentes = [{ id: 'tec-1', nombre: 'Ana', apellido: 'García' }];

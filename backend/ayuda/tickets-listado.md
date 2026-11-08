@@ -70,6 +70,10 @@ vez.
   tickets de un ciclo anterior, elíjalo en esta lista; el ciclo vigente figura
   con la marca "(activo)". Si el cliente no tiene ningún ciclo activo, se elige
   solo el ciclo más reciente.
+- **Creado desde / hasta**: muestra los tickets dados de alta entre esas dos
+  fechas, ambas incluidas. Por defecto abarca el año en curso, del 1 de enero al
+  31 de diciembre. Se suma al filtro de ciclo: el listado muestra los tickets que
+  cumplen los dos. Si borra una fecha, vuelve a la del año en curso.
 - **Estado**: el estado actual del ticket.
 - **Tipo**: ofrece solo los tipos sobre los que usted tiene **Ver**.
 - **Prioridad**: la prioridad cargada.

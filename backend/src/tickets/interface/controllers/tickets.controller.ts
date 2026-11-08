@@ -92,6 +92,7 @@ import {
   toOperacionResponseDto,
   toTicketResponseDto,
 } from '../dtos/ticket.dto';
+import { instanteDesde, instanteHasta } from '../filtro-fechas';
 import {
   TicketNoEncontradoError,
   TipoTicketNoEncontradoError,
@@ -419,8 +420,8 @@ export class TicketsController {
         prioridadId: query.prioridad,
         asignadoId: query.asignado,
         cicloId: query.ciclo,
-        fechaDesde: query.fechaDesde ? new Date(query.fechaDesde) : undefined,
-        fechaHasta: query.fechaHasta ? new Date(query.fechaHasta) : undefined,
+        fechaDesde: instanteDesde(query.fechaDesde),
+        fechaHasta: instanteHasta(query.fechaHasta),
         busqueda: query.busqueda,
         borrados: query.borrados,
       },
@@ -482,8 +483,8 @@ export class TicketsController {
           prioridadId: query.prioridad,
           asignadoId: query.asignado,
           cicloId: query.ciclo,
-          fechaDesde: query.fechaDesde ? new Date(query.fechaDesde) : undefined,
-          fechaHasta: query.fechaHasta ? new Date(query.fechaHasta) : undefined,
+          fechaDesde: instanteDesde(query.fechaDesde),
+          fechaHasta: instanteHasta(query.fechaHasta),
           busqueda: query.busqueda,
         },
       },
