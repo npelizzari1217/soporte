@@ -34,6 +34,7 @@ import {
   ModalidadTicket,
 } from '../../domain/entities/ticket.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
+import { NombreUsuario } from './tarea-ticket.dto';
 import { ArchivoEntity } from '../../domain/entities/archivo.entity';
 import {
   derivarEstadoPrimeraRespuesta,
@@ -457,13 +458,26 @@ export interface OperacionResponseDto {
   estadoAnteriorId: string | null;
   estadoNuevoId: string | null;
   autorId: string;
+  /** Nombre de quien hizo el cambio (odd/autor-y-filtro-fechas, S1); `null` si no se resolvió. */
+  autorNombre: string | null;
+  autorApellido: string | null;
   esInterno: boolean;
   metadata: Record<string, unknown> | null;
   createdAt: string;
 }
 
-/** Convierte una `OperacionTicketEntity` de dominio al shape de respuesta HTTP unificado. */
-export function toOperacionResponseDto(operacion: OperacionTicketEntity): OperacionResponseDto {
+/**
+ * Convierte una `OperacionTicketEntity` de dominio al shape de respuesta HTTP unificado.
+ *
+ * @param operacion Operación del ticket.
+ * @param nombres Nombres de usuarios ya resueltos en lote; el autor que falte queda en `null`.
+ * @returns La entrada del timeline con el nombre de su autor.
+ */
+export function toOperacionResponseDto(
+  operacion: OperacionTicketEntity,
+  nombres: ReadonlyMap<string, NombreUsuario>,
+): OperacionResponseDto {
+  const autor = nombres.get(operacion.autorId);
   return {
     id: operacion.id,
     ticketId: operacion.ticketId,
@@ -472,6 +486,8 @@ export function toOperacionResponseDto(operacion: OperacionTicketEntity): Operac
     estadoAnteriorId: operacion.estadoAnteriorId,
     estadoNuevoId: operacion.estadoNuevoId,
     autorId: operacion.autorId,
+    autorNombre: autor?.nombre ?? null,
+    autorApellido: autor?.apellido ?? null,
     esInterno: operacion.esInterno,
     metadata: operacion.metadata,
     createdAt: operacion.createdAt.toISOString(),

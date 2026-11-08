@@ -855,7 +855,11 @@ export class TicketsController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    return toOperacionResponseDto(result.getValue());
+    const operacion = result.getValue();
+    return toOperacionResponseDto(
+      operacion,
+      await this.usuarioMasterChecker.resolverNombres([operacion.autorId]),
+    );
   }
 
   /**
@@ -879,6 +883,11 @@ export class TicketsController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    return result.getValue().map(toOperacionResponseDto);
+    const operaciones = result.getValue();
+    // Un solo lote para todos los autores (sin N+1, odd/autor-y-filtro-fechas S1).
+    const nombres = await this.usuarioMasterChecker.resolverNombres([
+      ...new Set(operaciones.map((operacion) => operacion.autorId)),
+    ]);
+    return operaciones.map((operacion) => toOperacionResponseDto(operacion, nombres));
   }
 }

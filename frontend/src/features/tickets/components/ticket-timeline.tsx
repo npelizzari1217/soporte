@@ -24,6 +24,7 @@ import {
   BadgeX,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { NOMBRE_USUARIO_AUSENTE } from "@/features/dashboard/lib/metricas-map";
 import { formatearInstante } from "@/shared/lib/formato-fecha";
 import type { OperacionTicket } from "../types";
 
@@ -46,6 +47,14 @@ const TIPO_OPERACION_CONFIG: Record<string, { label: string; icon: typeof Messag
   CERTIFICADO_EMITIDO: { label: "Certificado emitido", icon: BadgeCheck },
   CERTIFICADO_ANULADO: { label: "Certificado anulado", icon: BadgeX },
 };
+
+/** Quién hizo el cambio (odd/autor-y-filtro-fechas, S1); un usuario que ya no está en master queda neutro. */
+function autorDe(operacion: OperacionTicket): string {
+  const nombre = [operacion.autorNombre, operacion.autorApellido]
+    .filter((parte): parte is string => parte !== null && parte.trim() !== "")
+    .join(" ");
+  return nombre || NOMBRE_USUARIO_AUSENTE;
+}
 
 export interface TicketTimelineProps {
   operaciones: OperacionTicket[];
@@ -82,7 +91,9 @@ export function TicketTimeline({ operaciones, tipoOperacionCodigoMap }: TicketTi
                   </Badge>
                 )}
                 {/* OperacionTicket.createdAt es @db.Timestamptz — instante. */}
-                <span className="text-xs text-muted-foreground">{formatearInstante(operacion.createdAt)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {formatearInstante(operacion.createdAt)} · por {autorDe(operacion)}
+                </span>
               </div>
               {operacion.descripcion && <p className="text-sm text-foreground">{operacion.descripcion}</p>}
             </div>

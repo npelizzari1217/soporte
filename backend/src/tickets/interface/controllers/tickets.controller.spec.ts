@@ -355,6 +355,64 @@ describe('TicketsController — bypass ROOT en chequeos inline (sdd/root-access-
   });
 });
 
+describe('TicketsController — autor en el timeline (odd/autor-y-filtro-fechas, S1)', () => {
+  it('cada entrada trae el nombre de su autor, resuelto en un solo lote', async () => {
+    const instante = new Date('2026-01-02T00:00:00.000Z');
+    const deOtro = OperacionTicketEntity.reconstitute(
+      {
+        ticketId: 'ticket-1',
+        tipoOperacionId: 'tipo-op-comentario',
+        descripcion: 'Otra',
+        estadoAnteriorId: null,
+        estadoNuevoId: null,
+        autorId: 'u-ana',
+        esInterno: false,
+        metadata: null,
+      },
+      'op-2',
+      instante,
+      instante,
+      null,
+    );
+    const listarTimeline = {
+      execute: vi
+        .fn<ListarTimelineUseCase['execute']>()
+        .mockResolvedValue(Result.ok([fakeOperacion(false), deOtro, fakeOperacion(false)])),
+    };
+    const { controller, usuarioMasterChecker } = buildController({ listarTimeline });
+    usuarioMasterChecker.resolverNombres.mockResolvedValue(
+      new Map([['u-ana', { nombre: 'Ana', apellido: 'Gomez' }]]),
+    );
+
+    const res = await controller.timeline(ROOT, 'ticket-1');
+
+    expect(res.map((op) => [op.autorId, op.autorNombre, op.autorApellido])).toEqual([
+      ['root-1', null, null],
+      ['u-ana', 'Ana', 'Gomez'],
+      ['root-1', null, null],
+    ]);
+    expect(usuarioMasterChecker.resolverNombres).toHaveBeenCalledTimes(1);
+    expect(usuarioMasterChecker.resolverNombres).toHaveBeenCalledWith(['root-1', 'u-ana']);
+  });
+
+  it('el comentario recién creado vuelve con el nombre de su autor', async () => {
+    const crearComentario = {
+      execute: vi
+        .fn<CrearComentarioUseCase['execute']>()
+        .mockResolvedValue(Result.ok(fakeOperacion(false))),
+    };
+    const { controller, usuarioMasterChecker } = buildController({ crearComentario });
+    usuarioMasterChecker.resolverNombres.mockResolvedValue(
+      new Map([['root-1', { nombre: 'Rosa', apellido: 'Root' }]]),
+    );
+
+    const res = await controller.comentar(ROOT, 'ticket-1', { texto: 'Hola' });
+
+    expect([res.autorNombre, res.autorApellido]).toEqual(['Rosa', 'Root']);
+    expect(usuarioMasterChecker.resolverNombres).toHaveBeenCalledWith(['root-1']);
+  });
+});
+
 describe('TicketsController.findAll — alcance por tipo (odd/permisos-por-tipo-ticket, D5 e)', () => {
   it('usuario común → pasa los permisos por tipo de la tabla del tenant, no las celdas del JWT', async () => {
     const { controller, listarTickets } = buildController();

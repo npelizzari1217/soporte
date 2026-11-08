@@ -179,7 +179,8 @@ actividad, con el nombre del archivo.
 ### La línea de tiempo
 
 La línea de tiempo muestra **lo más nuevo arriba**. Cada entrada tiene su tipo,
-su fecha y hora y, si corresponde, un texto: **Cambio de estado**,
+su fecha y hora, **quién hizo el cambio** y, si corresponde, un texto. Si ese
+usuario ya no existe, la entrada dice «por Usuario». Los tipos son: **Cambio de estado**,
 **Comentario**, **Asignación**, **Adjunto**, las entradas de tareas
 (**Tarea agregada**, **Técnico de tarea**, **Tarea completada**,
 **Tarea descompletada**, **Tarea eliminada**) y **Ticket borrado** o
