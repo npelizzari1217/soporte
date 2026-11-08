@@ -355,6 +355,83 @@ describe('TicketsController — bypass ROOT en chequeos inline (sdd/root-access-
   });
 });
 
+describe('TicketsController — autor en el timeline (odd/autor-y-filtro-fechas, S1)', () => {
+  it('cada entrada trae el nombre de su autor, resuelto en un solo lote', async () => {
+    const instante = new Date('2026-01-02T00:00:00.000Z');
+    const deOtro = OperacionTicketEntity.reconstitute(
+      {
+        ticketId: 'ticket-1',
+        tipoOperacionId: 'tipo-op-comentario',
+        descripcion: 'Otra',
+        estadoAnteriorId: null,
+        estadoNuevoId: null,
+        autorId: 'u-ana',
+        esInterno: false,
+        metadata: null,
+      },
+      'op-2',
+      instante,
+      instante,
+      null,
+    );
+    const listarTimeline = {
+      execute: vi
+        .fn<ListarTimelineUseCase['execute']>()
+        .mockResolvedValue(Result.ok([fakeOperacion(false), deOtro, fakeOperacion(false)])),
+    };
+    const { controller, usuarioMasterChecker } = buildController({ listarTimeline });
+    usuarioMasterChecker.resolverNombres.mockResolvedValue(
+      new Map([['u-ana', { nombre: 'Ana', apellido: 'Gomez' }]]),
+    );
+
+    const res = await controller.timeline(ROOT, 'ticket-1');
+
+    expect(res.map((op) => [op.autorId, op.autorNombre, op.autorApellido])).toEqual([
+      ['root-1', null, null],
+      ['u-ana', 'Ana', 'Gomez'],
+      ['root-1', null, null],
+    ]);
+    expect(usuarioMasterChecker.resolverNombres).toHaveBeenCalledTimes(1);
+    expect(usuarioMasterChecker.resolverNombres).toHaveBeenCalledWith(['root-1', 'u-ana']);
+  });
+
+  it('con master caída, el timeline carga igual y sus entradas quedan sin nombre de autor', async () => {
+    const listarTimeline = {
+      execute: vi
+        .fn<ListarTimelineUseCase['execute']>()
+        .mockResolvedValue(Result.ok([fakeOperacion(false)])),
+    };
+    const { controller, usuarioMasterChecker } = buildController({ listarTimeline });
+    usuarioMasterChecker.resolverNombres.mockRejectedValue(new Error('master caída'));
+
+    const res = await controller.timeline(ROOT, 'ticket-1');
+
+    expect(res.map((op) => [op.id, op.autorId, op.autorNombre, op.autorApellido])).toEqual([
+      ['op-1', 'root-1', null, null],
+    ]);
+  });
+
+  it('el comentario recién creado vuelve con el nombre del JWT, sin consultar master', async () => {
+    const crearComentario = {
+      execute: vi
+        .fn<CrearComentarioUseCase['execute']>()
+        .mockResolvedValue(Result.ok(fakeOperacion(false))),
+    };
+    const { controller, usuarioMasterChecker } = buildController({ crearComentario });
+    // Si master estuviera caída, el comentario ya guardado no debe responder con error.
+    usuarioMasterChecker.resolverNombres.mockRejectedValue(new Error('master caída'));
+
+    const res = await controller.comentar(
+      { ...ROOT, nombre: 'Rosa', apellido: 'Root' },
+      'ticket-1',
+      { texto: 'Hola' },
+    );
+
+    expect([res.autorNombre, res.autorApellido]).toEqual(['Rosa', 'Root']);
+    expect(usuarioMasterChecker.resolverNombres).not.toHaveBeenCalled();
+  });
+});
+
 describe('TicketsController.findAll — alcance por tipo (odd/permisos-por-tipo-ticket, D5 e)', () => {
   it('usuario común → pasa los permisos por tipo de la tabla del tenant, no las celdas del JWT', async () => {
     const { controller, listarTickets } = buildController();
@@ -382,6 +459,42 @@ describe('TicketsController.findAll — alcance por tipo (odd/permisos-por-tipo-
 
     expect(listarTickets.execute).toHaveBeenCalledWith(
       expect.objectContaining({ alcance: { actorId: actor.sub, permisosPorTipo: null } }),
+    );
+  });
+});
+
+describe('TicketsController — filtro Desde/Hasta por día argentino (odd/autor-y-filtro-fechas, S2)', () => {
+  const RANGO = {
+    fechaDesde: new Date('2026-01-01T03:00:00.000Z'),
+    fechaHasta: new Date('2027-01-01T02:59:59.999Z'),
+  };
+
+  it('el listado convierte las fechas solas en el año entero en Argentina', async () => {
+    const { controller, listarTickets } = buildController();
+
+    await controller.findAll(ROOT, { fechaDesde: '2026-01-01', fechaHasta: '2026-12-31' });
+
+    expect(listarTickets.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ filtros: expect.objectContaining(RANGO) }),
+    );
+  });
+
+  it('la exportación usa los mismos bordes que el listado', async () => {
+    const exportarTickets = { execute: vi.fn<ExportarTicketsUseCase['execute']>() };
+    exportarTickets.execute.mockResolvedValue(
+      Result.ok({ contenido: 'Número', nombreArchivo: 'tickets.csv' }),
+    );
+    const { controller } = buildController({ exportarTickets });
+
+    await controller.exportar(
+      ROOT,
+      { fechaDesde: '2026-01-01', fechaHasta: '2026-12-31' },
+      { setHeader: () => undefined },
+    );
+
+    expect(exportarTickets.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ filtros: expect.objectContaining(RANGO) }),
+      'csv',
     );
   });
 });

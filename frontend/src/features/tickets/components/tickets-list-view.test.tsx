@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
@@ -331,6 +331,188 @@ describe("TicketsListView", () => {
       await waitFor(() => expect(new URL(urlPedida).searchParams.get("ciclo")).toBe("c-2026"));
       const select = screen.getByLabelText(/ciclo/i) as HTMLSelectElement;
       expect(select.value).toBe("c-2026");
+    });
+  });
+
+  describe("filtro Desde/Hasta (odd/autor-y-filtro-fechas, S2)", () => {
+    const user = buildUser({ permisos: ["TICKETS:VER_TODOS"] });
+
+    function capturarPedido(ruta = "/api/tickets") {
+      const urls: URL[] = [];
+      server.use(
+        http.get(ruta, ({ request }) => {
+          urls.push(new URL(request.url));
+          return ruta.endsWith("export")
+            ? new HttpResponse("numero\n", { headers: { "content-type": "text/csv" } })
+            : HttpResponse.json({ items: [TICKET], total: 1, pagina: 1, porPagina: 10 });
+        }),
+      );
+      return urls;
+    }
+
+    afterEach(() => vi.useRealTimers());
+
+    it("sin fechas en la URL, precarga y pide el año en curso entero", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2027-03-15T12:00:00.000Z"));
+      const urls = capturarPedido();
+
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+
+      expect(urls.at(-1)?.searchParams.get("fechaDesde")).toBe("2027-01-01");
+      expect(urls.at(-1)?.searchParams.get("fechaHasta")).toBe("2027-12-31");
+      expect(screen.getByLabelText("Creado desde")).toHaveValue("2027-01-01");
+      expect(screen.getByLabelText("Creado hasta")).toHaveValue("2027-12-31");
+      // El período por defecto no es un filtro elegido: el ciclo sigue sin mandarse.
+      expect(urls.at(-1)?.searchParams.get("ciclo")).toBeNull();
+    });
+
+    it("el año en curso es el de Argentina: el 31/12 a las 23:30 ART todavía es ese año", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2027-01-01T02:30:00.000Z"));
+      const urls = capturarPedido();
+
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+
+      expect(urls.at(-1)?.searchParams.get("fechaDesde")).toBe("2026-01-01");
+      expect(urls.at(-1)?.searchParams.get("fechaHasta")).toBe("2026-12-31");
+    });
+
+    it("con fechas en la URL, pide y muestra esas, junto con el ciclo", async () => {
+      const urls = capturarPedido();
+      currentSearch = "fechaDesde=2025-03-01&fechaHasta=2025-06-30&ciclo=c-2024";
+
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+
+      const pedido = urls.at(-1);
+      expect(pedido?.searchParams.get("fechaDesde")).toBe("2025-03-01");
+      expect(pedido?.searchParams.get("fechaHasta")).toBe("2025-06-30");
+      expect(pedido?.searchParams.get("ciclo")).toBe("c-2024");
+      expect(screen.getByLabelText("Creado desde")).toHaveValue("2025-03-01");
+    });
+
+    it("cambiar «Desde» lo deja en la URL y vuelve a la página 1", async () => {
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+
+      const desde = screen.getByLabelText("Creado desde");
+      fireEvent.change(desde, { target: { value: "2026-05-01" } });
+
+      await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+      const params = new URLSearchParams((replaceMock.mock.calls.at(-1)?.[0] as string).split("?")[1]);
+      expect(params.get("fechaDesde")).toBe("2026-05-01");
+      expect(params.get("pagina")).toBe("1");
+    });
+
+    it("la exportación usa las mismas fechas que el listado", async () => {
+      URL.createObjectURL = vi.fn(() => "blob:mock");
+      URL.revokeObjectURL = vi.fn();
+      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      const urls = capturarPedido("/api/tickets/export");
+      currentSearch = "fechaDesde=2025-03-01&fechaHasta=2025-06-30";
+
+      const usuario = userEvent.setup();
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+      await usuario.click(screen.getByRole("button", { name: /^exportar$/i }));
+      await usuario.click(await screen.findByRole("menuitem", { name: "Excel" }));
+
+      await waitFor(() => expect(clickSpy).toHaveBeenCalled());
+      expect(urls.at(-1)?.searchParams.get("fechaDesde")).toBe("2025-03-01");
+      expect(urls.at(-1)?.searchParams.get("fechaHasta")).toBe("2025-06-30");
+    });
+
+    it("sin fechas en la URL, la exportación también baja solo el año en curso", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2027-03-15T12:00:00.000Z"));
+      URL.createObjectURL = vi.fn(() => "blob:mock");
+      URL.revokeObjectURL = vi.fn();
+      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      const urls = capturarPedido("/api/tickets/export");
+
+      const usuario = userEvent.setup();
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+      await usuario.click(screen.getByRole("button", { name: /^exportar$/i }));
+      await usuario.click(await screen.findByRole("menuitem", { name: "Excel" }));
+
+      await waitFor(() => expect(clickSpy).toHaveBeenCalled());
+      expect(urls.at(-1)?.searchParams.get("fechaDesde")).toBe("2027-01-01");
+      expect(urls.at(-1)?.searchParams.get("fechaHasta")).toBe("2027-12-31");
+    });
+
+    function ultimaUrl(): URLSearchParams {
+      return new URLSearchParams((replaceMock.mock.calls.at(-1)?.[0] as string).split("?")[1]);
+    }
+
+    it("elegir otro ciclo lleva las fechas a las de ese ciclo (L7)", async () => {
+      const usuario = userEvent.setup();
+      currentSearch = "fechaDesde=2026-05-01";
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+
+      await usuario.selectOptions(screen.getByLabelText(/ciclo/i), "c-2024");
+
+      await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+      const params = ultimaUrl();
+      expect(params.get("ciclo")).toBe("c-2024");
+      expect(params.get("fechaDesde")).toBe("2024-01-01");
+      expect(params.get("fechaHasta")).toBe("2024-12-31");
+    });
+
+    it("volver a «Ciclo activo» toma las fechas del ciclo activo", async () => {
+      const usuario = userEvent.setup();
+      currentSearch = "ciclo=c-2024&fechaDesde=2024-01-01&fechaHasta=2024-12-31";
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+
+      await usuario.selectOptions(screen.getByLabelText(/ciclo/i), "");
+
+      await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+      const params = ultimaUrl();
+      expect(params.get("ciclo")).toBeNull();
+      expect(params.get("fechaDesde")).toBe("2026-01-01");
+      expect(params.get("fechaHasta")).toBe("2026-12-31");
+    });
+
+    it("un link con ciclo y sin fechas usa las fechas de ese ciclo, no el año en curso", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-08T12:00:00.000Z"));
+      const urls = capturarPedido();
+      currentSearch = "ciclo=c-2024";
+
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+
+      await waitFor(() => expect(urls.at(-1)?.searchParams.get("fechaDesde")).toBe("2024-01-01"));
+      expect(urls.at(-1)?.searchParams.get("fechaHasta")).toBe("2024-12-31");
+      expect(screen.getByLabelText("Creado desde")).toHaveValue("2024-01-01");
+    });
+
+    it("elegir el ciclo que ya se está usando no toca las fechas ajustadas", async () => {
+      const usuario = userEvent.setup();
+      currentSearch = "ciclo=c-2024&fechaDesde=2024-03-01";
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+
+      await usuario.selectOptions(screen.getByLabelText(/ciclo/i), "c-2024");
+
+      expect(replaceMock).not.toHaveBeenCalled();
+      expect(screen.getByLabelText("Creado desde")).toHaveValue("2024-03-01");
+    });
+
+    it("una fecha elegida cuenta como filtro: el vacío ofrece limpiarla", async () => {
+      server.use(
+        http.get("/api/tickets", () => HttpResponse.json({ items: [], total: 0, pagina: 1, porPagina: 10 })),
+      );
+      currentSearch = "fechaDesde=2030-01-01";
+
+      renderWithProviders(<TicketsListView />, { user });
+
+      expect(await screen.findByRole("button", { name: /limpiar filtros/i })).toBeInTheDocument();
     });
   });
 

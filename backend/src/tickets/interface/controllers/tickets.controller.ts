@@ -92,6 +92,8 @@ import {
   toOperacionResponseDto,
   toTicketResponseDto,
 } from '../dtos/ticket.dto';
+import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
+import { instanteDesde, instanteHasta } from '../filtro-fechas';
 import {
   TicketNoEncontradoError,
   TipoTicketNoEncontradoError,
@@ -419,8 +421,8 @@ export class TicketsController {
         prioridadId: query.prioridad,
         asignadoId: query.asignado,
         cicloId: query.ciclo,
-        fechaDesde: query.fechaDesde ? new Date(query.fechaDesde) : undefined,
-        fechaHasta: query.fechaHasta ? new Date(query.fechaHasta) : undefined,
+        fechaDesde: instanteDesde(query.fechaDesde),
+        fechaHasta: instanteHasta(query.fechaHasta),
         busqueda: query.busqueda,
         borrados: query.borrados,
       },
@@ -482,8 +484,8 @@ export class TicketsController {
           prioridadId: query.prioridad,
           asignadoId: query.asignado,
           cicloId: query.ciclo,
-          fechaDesde: query.fechaDesde ? new Date(query.fechaDesde) : undefined,
-          fechaHasta: query.fechaHasta ? new Date(query.fechaHasta) : undefined,
+          fechaDesde: instanteDesde(query.fechaDesde),
+          fechaHasta: instanteHasta(query.fechaHasta),
           busqueda: query.busqueda,
         },
       },
@@ -855,7 +857,12 @@ export class TicketsController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    return toOperacionResponseDto(result.getValue());
+    // El autor es quien comenta: su nombre ya viene en el JWT. Consultar master acá haría que una
+    // falla de esa base devuelva error con el comentario YA guardado, y el reintento lo duplicaría.
+    return toOperacionResponseDto(
+      result.getValue(),
+      new Map([[user.sub, { nombre: user.nombre, apellido: user.apellido }]]),
+    );
   }
 
   /**
@@ -879,6 +886,34 @@ export class TicketsController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    return result.getValue().map(toOperacionResponseDto);
+    const operaciones = result.getValue();
+    const nombres = await this.nombresDeAutores(operaciones);
+    return operaciones.map((operacion) => toOperacionResponseDto(operacion, nombres));
+  }
+
+  /**
+   * Nombres de los autores del timeline en un solo lote (sin N+1, odd/autor-y-filtro-fechas S1).
+   *
+   * El nombre es un dato accesorio de la entrada: si master no responde, el timeline se muestra
+   * igual, sin nombres (la pantalla dice «por Usuario»), en vez de dejar al usuario sin el
+   * historial del ticket. La falla queda en el log con el ticket, no se descarta.
+   *
+   * @param operaciones Entradas del timeline.
+   * @returns Nombres por id de usuario; vacío si master falló.
+   */
+  private async nombresDeAutores(
+    operaciones: readonly OperacionTicketEntity[],
+  ): Promise<ReadonlyMap<string, { nombre: string; apellido: string }>> {
+    try {
+      return await this.usuarioMasterChecker.resolverNombres([
+        ...new Set(operaciones.map((operacion) => operacion.autorId)),
+      ]);
+    } catch (error: unknown) {
+      this.logger.error(
+        `No se resolvieron los autores del timeline del ticket ${operaciones[0]?.ticketId ?? '?'}: se devuelve sin nombres`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      return new Map();
+    }
   }
 }

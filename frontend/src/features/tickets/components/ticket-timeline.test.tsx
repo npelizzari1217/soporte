@@ -37,6 +37,8 @@ function buildOperacion(overrides: Partial<OperacionTicket>): OperacionTicket {
     estadoAnteriorId: null,
     estadoNuevoId: null,
     autorId: "u1",
+    autorNombre: "Ana",
+    autorApellido: "Gómez",
     esInterno: false,
     metadata: null,
     createdAt: "2026-01-01T10:00:00.000Z",
@@ -45,6 +47,24 @@ function buildOperacion(overrides: Partial<OperacionTicket>): OperacionTicket {
 }
 
 describe("TicketTimeline", () => {
+  it("cada entrada dice quién hizo el cambio (odd/autor-y-filtro-fechas, S1)", () => {
+    render(
+      <TicketTimeline
+        operaciones={[
+          buildOperacion({ id: "a", createdAt: "2026-01-02T10:00:00.000Z" }),
+          buildOperacion({ id: "b", autorId: "u-baja", autorNombre: null, autorApellido: null }),
+        ]}
+        tipoOperacionCodigoMap={TIPO_OPERACION_MAP}
+      />,
+    );
+
+    const textos = screen.getAllByRole("listitem").map((li) => li.textContent ?? "");
+    expect(textos[0]).toContain("por Ana Gómez");
+    // Un autor que ya no está en master no deja la entrada sin nadie ni muestra su id.
+    expect(textos[1]).toContain("por Usuario");
+    expect(textos[1]).not.toContain("u-baja");
+  });
+
   it("nombra el borrado y la recuperación del ticket (odd/permisos-por-tipo-ticket, S8)", () => {
     render(
       <TicketTimeline

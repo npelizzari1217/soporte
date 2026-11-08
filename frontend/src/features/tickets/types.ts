@@ -143,6 +143,9 @@ export interface OperacionTicket {
   estadoAnteriorId: string | null;
   estadoNuevoId: string | null;
   autorId: string;
+  /** Nombre de quien hizo el cambio (odd/autor-y-filtro-fechas, S1); `null` si no se resolvió. */
+  autorNombre: string | null;
+  autorApellido: string | null;
   esInterno: boolean;
   metadata: Record<string, unknown> | null;
   createdAt: string;

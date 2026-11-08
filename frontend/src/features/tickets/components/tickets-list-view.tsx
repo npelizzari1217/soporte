@@ -6,11 +6,10 @@
  * (searchParams, ADR-2) — deep-link + back/forward funcionan sin estado
  * cliente duplicado.
  *
- * Deviación de scope (documentada, no bloqueante): la spec R-M1 pide filtro
- * de rango de fechas (popover). B1 implementa estado/tipo/prioridad/
- * asignado/búsqueda — el rango de fechas queda pendiente para un batch
- * posterior (el tipo `TicketsFiltros`/hook `useTickets` ya soportan
- * `fechaDesde`/`fechaHasta`, falta solo el control de UI).
+ * Filtro Desde/Hasta (odd/autor-y-filtro-fechas, S2): sobre la fecha de creación del ticket, y
+ * se suma al de ciclo. Sin fechas en la URL vale el año en curso en Argentina (1/1 al 31/12);
+ * borrar una fecha vuelve a ese valor. Elegir un ciclo distinto del que se está usando lleva las
+ * fechas a las de ese ciclo (L7), para que el año por defecto no deje vacío un ciclo anterior. El backend lee cada fecha como un día argentino entero.
  *
  * Filtro de ciclo (feat/selector-ciclo-tickets): sin `ciclo` en la URL, el
  * backend lista el ciclo activo (`GET /tickets` sin `?ciclo`). Los tickets de
@@ -48,6 +47,8 @@ import { FilterBar } from "@/components/shared/filter-bar";
 import { Pagination } from "@/components/shared/pagination";
 import { PageHeader } from "@/components/shared/page-header";
 import { Select } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { hoyFechaCalendario } from "@/shared/lib/formato-fecha";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TicketCreateDialog } from "./ticket-create-dialog";
@@ -79,6 +80,8 @@ export function TicketsListView() {
       prioridad: searchParams.get("prioridad") ?? undefined,
       asignado: searchParams.get("asignado") ?? undefined,
       ciclo: searchParams.get("ciclo") ?? undefined,
+      fechaDesde: searchParams.get("fechaDesde") ?? undefined,
+      fechaHasta: searchParams.get("fechaHasta") ?? undefined,
       busqueda: searchParams.get("busqueda") ?? undefined,
       borrados: borrados ? true : undefined,
       pagina: Number(searchParams.get("pagina") ?? "1"),
@@ -98,6 +101,8 @@ export function TicketsListView() {
     Boolean(filtros.prioridad) ||
     Boolean(filtros.asignado) ||
     Boolean(filtros.ciclo) ||
+    Boolean(filtros.fechaDesde) ||
+    Boolean(filtros.fechaHasta) ||
     Boolean(filtros.busqueda) ||
     Boolean(filtros.borrados) ||
     (filtros.pagina ?? 1) > 1;
@@ -161,15 +166,36 @@ export function TicketsListView() {
   const cicloPorDefecto = cicloActivoId === null ? cicloMasRecienteId : undefined;
   const cicloSeleccionado = filtros.ciclo ?? cicloPorDefecto;
 
-  // Filtros REALES con los que se pide el listado y se exporta — puede
-  // diferir de `filtros` (URL) solo en `ciclo`, cuando se aplica el default
-  // de "sin ciclo activo" de arriba.
+  // Período por defecto del filtro de fechas (S2): el año en curso en Argentina. Con un ciclo en
+  // la URL y sin fechas (un link guardado), las de ese ciclo: el año en curso dejaría vacío un
+  // ciclo anterior, que es lo que L7 evita al elegirlo en el select.
+  const anioEnCurso = hoyFechaCalendario().slice(0, 4);
+  const cicloDeLaUrl = filtros.ciclo ? ciclos.find((c) => c.id === filtros.ciclo) : undefined;
+  const fechaDesde = filtros.fechaDesde ?? cicloDeLaUrl?.fechaInicio ?? `${anioEnCurso}-01-01`;
+  const fechaHasta = filtros.fechaHasta ?? cicloDeLaUrl?.fechaFin ?? `${anioEnCurso}-12-31`;
+
+  // Filtros REALES con los que se pide el listado y se exporta — difieren de
+  // `filtros` (URL) en `ciclo`, cuando se aplica el default de "sin ciclo
+  // activo" de arriba, y en las fechas, que sin URL valen el año en curso.
   const filtrosEfectivos: TicketsFiltros = useMemo(
-    () => ({ ...filtros, ciclo: cicloSeleccionado }),
-    [filtros, cicloSeleccionado],
+    () => ({ ...filtros, ciclo: cicloSeleccionado, fechaDesde, fechaHasta }),
+    [filtros, cicloSeleccionado, fechaDesde, fechaHasta],
   );
 
   const ticketsQuery = useTickets(filtrosEfectivos);
+
+  /**
+   * Cambio de ciclo (odd/autor-y-filtro-fechas, L7): las fechas pasan a ser las del ciclo elegido.
+   * "Ciclo activo" (`""`) toma las del ciclo que el listado usa por defecto. Volver a elegir el
+   * mismo ciclo no toca las fechas que el usuario haya ajustado.
+   */
+  function elegirCiclo(valor: string) {
+    const ciclo = valor || undefined;
+    if (ciclo === filtros.ciclo) return;
+    const destinoId = ciclo ?? cicloActivoId ?? cicloMasRecienteId;
+    const destino = ciclos.find((c) => c.id === destinoId);
+    updateFiltros({ ciclo, fechaDesde: destino?.fechaInicio, fechaHasta: destino?.fechaFin });
+  }
 
   const prioridadCodigoMap = useMemo(
     () => buildIdToCodigoMap(prioridadesQuery.data ?? []),
@@ -302,7 +328,7 @@ export function TicketsListView() {
           <Select
             id="filtro-ciclo"
             value={cicloSeleccionado ?? ""}
-            onChange={(e) => updateFiltros({ ciclo: e.target.value || undefined })}
+            onChange={(e) => elegirCiclo(e.target.value)}
           >
             <option value="">Ciclo activo</option>
             {ciclos.map((ciclo) => (
@@ -311,6 +337,28 @@ export function TicketsListView() {
               </option>
             ))}
           </Select>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <label htmlFor="filtro-fecha-desde" className="sr-only">
+            Creado desde
+          </label>
+          <Input
+            id="filtro-fecha-desde"
+            type="date"
+            value={fechaDesde}
+            onChange={(e) => updateFiltros({ fechaDesde: e.target.value || undefined })}
+          />
+          <span className="text-sm text-muted-foreground">a</span>
+          <label htmlFor="filtro-fecha-hasta" className="sr-only">
+            Creado hasta
+          </label>
+          <Input
+            id="filtro-fecha-hasta"
+            type="date"
+            value={fechaHasta}
+            onChange={(e) => updateFiltros({ fechaHasta: e.target.value || undefined })}
+          />
         </div>
 
         <div className="flex flex-col gap-1">
