@@ -182,7 +182,11 @@ export function TicketsListView() {
     [filtros, cicloSeleccionado, fechaDesde, fechaHasta],
   );
 
-  const ticketsQuery = useTickets(filtrosEfectivos);
+  // Con un ciclo en la URL y sin fechas, el período sale de ese ciclo: pedir antes de tenerlo
+  // mostraría por un instante el año en curso. Si la consulta de ciclos falla, se pide igual con él.
+  const esperandoCicloDeLaUrl =
+    Boolean(filtros.ciclo) && (!filtros.fechaDesde || !filtros.fechaHasta) && ciclosQuery.isPending;
+  const ticketsQuery = useTickets(filtrosEfectivos, { enabled: !esperandoCicloDeLaUrl });
 
   /**
    * Cambio de ciclo (odd/autor-y-filtro-fechas, L7): las fechas pasan a ser las del ciclo elegido.

@@ -19,10 +19,15 @@ export function buildTicketsQueryString(filtros: TicketsFiltros): string {
   return params.toString();
 }
 
-export function useTickets(filtros: TicketsFiltros) {
+/**
+ * @param filtros Filtros efectivos del listado.
+ * @param opciones `enabled: false` posterga el pedido mientras falte un dato que lo define.
+ */
+export function useTickets(filtros: TicketsFiltros, opciones: { enabled?: boolean } = {}) {
   const qs = buildTicketsQueryString(filtros);
   return useQuery({
     queryKey: ["tickets", filtros],
+    enabled: opciones.enabled ?? true,
     queryFn: () => apiFetch<ListTicketsResponse>(`tickets${qs ? `?${qs}` : ""}`),
   });
 }
