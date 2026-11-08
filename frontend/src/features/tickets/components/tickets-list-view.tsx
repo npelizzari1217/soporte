@@ -166,10 +166,13 @@ export function TicketsListView() {
   const cicloPorDefecto = cicloActivoId === null ? cicloMasRecienteId : undefined;
   const cicloSeleccionado = filtros.ciclo ?? cicloPorDefecto;
 
-  // Año en curso en Argentina: el período por defecto del filtro de fechas (S2).
+  // Período por defecto del filtro de fechas (S2): el año en curso en Argentina. Con un ciclo en
+  // la URL y sin fechas (un link guardado), las de ese ciclo: el año en curso dejaría vacío un
+  // ciclo anterior, que es lo que L7 evita al elegirlo en el select.
   const anioEnCurso = hoyFechaCalendario().slice(0, 4);
-  const fechaDesde = filtros.fechaDesde ?? `${anioEnCurso}-01-01`;
-  const fechaHasta = filtros.fechaHasta ?? `${anioEnCurso}-12-31`;
+  const cicloDeLaUrl = filtros.ciclo ? ciclos.find((c) => c.id === filtros.ciclo) : undefined;
+  const fechaDesde = filtros.fechaDesde ?? cicloDeLaUrl?.fechaInicio ?? `${anioEnCurso}-01-01`;
+  const fechaHasta = filtros.fechaHasta ?? cicloDeLaUrl?.fechaFin ?? `${anioEnCurso}-12-31`;
 
   // Filtros REALES con los que se pide el listado y se exporta — difieren de
   // `filtros` (URL) en `ciclo`, cuando se aplica el default de "sin ciclo

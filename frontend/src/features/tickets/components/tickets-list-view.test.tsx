@@ -478,6 +478,20 @@ describe("TicketsListView", () => {
       expect(params.get("fechaHasta")).toBe("2026-12-31");
     });
 
+    it("un link con ciclo y sin fechas usa las fechas de ese ciclo, no el año en curso", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-08T12:00:00.000Z"));
+      const urls = capturarPedido();
+      currentSearch = "ciclo=c-2024";
+
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+
+      await waitFor(() => expect(urls.at(-1)?.searchParams.get("fechaDesde")).toBe("2024-01-01"));
+      expect(urls.at(-1)?.searchParams.get("fechaHasta")).toBe("2024-12-31");
+      expect(screen.getByLabelText("Creado desde")).toHaveValue("2024-01-01");
+    });
+
     it("elegir el ciclo que ya se está usando no toca las fechas ajustadas", async () => {
       const usuario = userEvent.setup();
       currentSearch = "ciclo=c-2024&fechaDesde=2024-03-01";
