@@ -856,10 +856,11 @@ export class TicketsController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    const operacion = result.getValue();
+    // El autor es quien comenta: su nombre ya viene en el JWT. Consultar master acá haría que una
+    // falla de esa base devuelva error con el comentario YA guardado, y el reintento lo duplicaría.
     return toOperacionResponseDto(
-      operacion,
-      await this.usuarioMasterChecker.resolverNombres([operacion.autorId]),
+      result.getValue(),
+      new Map([[user.sub, { nombre: user.nombre, apellido: user.apellido }]]),
     );
   }
 

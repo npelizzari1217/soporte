@@ -395,21 +395,24 @@ describe('TicketsController — autor en el timeline (odd/autor-y-filtro-fechas,
     expect(usuarioMasterChecker.resolverNombres).toHaveBeenCalledWith(['root-1', 'u-ana']);
   });
 
-  it('el comentario recién creado vuelve con el nombre de su autor', async () => {
+  it('el comentario recién creado vuelve con el nombre del JWT, sin consultar master', async () => {
     const crearComentario = {
       execute: vi
         .fn<CrearComentarioUseCase['execute']>()
         .mockResolvedValue(Result.ok(fakeOperacion(false))),
     };
     const { controller, usuarioMasterChecker } = buildController({ crearComentario });
-    usuarioMasterChecker.resolverNombres.mockResolvedValue(
-      new Map([['root-1', { nombre: 'Rosa', apellido: 'Root' }]]),
+    // Si master estuviera caída, el comentario ya guardado no debe responder con error.
+    usuarioMasterChecker.resolverNombres.mockRejectedValue(new Error('master caída'));
+
+    const res = await controller.comentar(
+      { ...ROOT, nombre: 'Rosa', apellido: 'Root' },
+      'ticket-1',
+      { texto: 'Hola' },
     );
 
-    const res = await controller.comentar(ROOT, 'ticket-1', { texto: 'Hola' });
-
     expect([res.autorNombre, res.autorApellido]).toEqual(['Rosa', 'Root']);
-    expect(usuarioMasterChecker.resolverNombres).toHaveBeenCalledWith(['root-1']);
+    expect(usuarioMasterChecker.resolverNombres).not.toHaveBeenCalled();
   });
 });
 
