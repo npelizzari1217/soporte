@@ -8,7 +8,8 @@
  *
  * Filtro Desde/Hasta (odd/autor-y-filtro-fechas, S2): sobre la fecha de creación del ticket, y
  * se suma al de ciclo. Sin fechas en la URL vale el año en curso en Argentina (1/1 al 31/12);
- * borrar una fecha vuelve a ese valor. El backend lee cada fecha como un día argentino entero.
+ * borrar una fecha vuelve a ese valor. Elegir un ciclo distinto del que se está usando lleva las
+ * fechas a las de ese ciclo (L7), para que el año por defecto no deje vacío un ciclo anterior. El backend lee cada fecha como un día argentino entero.
  *
  * Filtro de ciclo (feat/selector-ciclo-tickets): sin `ciclo` en la URL, el
  * backend lista el ciclo activo (`GET /tickets` sin `?ciclo`). Los tickets de
@@ -180,6 +181,19 @@ export function TicketsListView() {
 
   const ticketsQuery = useTickets(filtrosEfectivos);
 
+  /**
+   * Cambio de ciclo (odd/autor-y-filtro-fechas, L7): las fechas pasan a ser las del ciclo elegido.
+   * "Ciclo activo" (`""`) toma las del ciclo que el listado usa por defecto. Volver a elegir el
+   * mismo ciclo no toca las fechas que el usuario haya ajustado.
+   */
+  function elegirCiclo(valor: string) {
+    const ciclo = valor || undefined;
+    if (ciclo === filtros.ciclo) return;
+    const destinoId = ciclo ?? cicloActivoId ?? cicloMasRecienteId;
+    const destino = ciclos.find((c) => c.id === destinoId);
+    updateFiltros({ ciclo, fechaDesde: destino?.fechaInicio, fechaHasta: destino?.fechaFin });
+  }
+
   const prioridadCodigoMap = useMemo(
     () => buildIdToCodigoMap(prioridadesQuery.data ?? []),
     [prioridadesQuery.data],
@@ -311,7 +325,7 @@ export function TicketsListView() {
           <Select
             id="filtro-ciclo"
             value={cicloSeleccionado ?? ""}
-            onChange={(e) => updateFiltros({ ciclo: e.target.value || undefined })}
+            onChange={(e) => elegirCiclo(e.target.value)}
           >
             <option value="">Ciclo activo</option>
             {ciclos.map((ciclo) => (

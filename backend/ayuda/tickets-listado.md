@@ -73,7 +73,9 @@ vez.
 - **Creado desde / hasta**: muestra los tickets dados de alta entre esas dos
   fechas, ambas incluidas. Por defecto abarca el año en curso, del 1 de enero al
   31 de diciembre. Se suma al filtro de ciclo: el listado muestra los tickets que
-  cumplen los dos. Si borra una fecha, vuelve a la del año en curso.
+  cumplen los dos. Al elegir otro ciclo, las fechas pasan a ser las de ese ciclo;
+  después puede ajustarlas a mano. Si borra una fecha, vuelve a la del año en
+  curso.
 - **Estado**: el estado actual del ticket.
 - **Tipo**: ofrece solo los tipos sobre los que usted tiene **Ver**.
 - **Prioridad**: la prioridad cargada.

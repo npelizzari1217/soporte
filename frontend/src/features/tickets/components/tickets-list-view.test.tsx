@@ -444,6 +444,52 @@ describe("TicketsListView", () => {
       expect(urls.at(-1)?.searchParams.get("fechaHasta")).toBe("2027-12-31");
     });
 
+    function ultimaUrl(): URLSearchParams {
+      return new URLSearchParams((replaceMock.mock.calls.at(-1)?.[0] as string).split("?")[1]);
+    }
+
+    it("elegir otro ciclo lleva las fechas a las de ese ciclo (L7)", async () => {
+      const usuario = userEvent.setup();
+      currentSearch = "fechaDesde=2026-05-01";
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+
+      await usuario.selectOptions(screen.getByLabelText(/ciclo/i), "c-2024");
+
+      await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+      const params = ultimaUrl();
+      expect(params.get("ciclo")).toBe("c-2024");
+      expect(params.get("fechaDesde")).toBe("2024-01-01");
+      expect(params.get("fechaHasta")).toBe("2024-12-31");
+    });
+
+    it("volver a «Ciclo activo» toma las fechas del ciclo activo", async () => {
+      const usuario = userEvent.setup();
+      currentSearch = "ciclo=c-2024&fechaDesde=2024-01-01&fechaHasta=2024-12-31";
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+
+      await usuario.selectOptions(screen.getByLabelText(/ciclo/i), "");
+
+      await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+      const params = ultimaUrl();
+      expect(params.get("ciclo")).toBeNull();
+      expect(params.get("fechaDesde")).toBe("2026-01-01");
+      expect(params.get("fechaHasta")).toBe("2026-12-31");
+    });
+
+    it("elegir el ciclo que ya se está usando no toca las fechas ajustadas", async () => {
+      const usuario = userEvent.setup();
+      currentSearch = "ciclo=c-2024&fechaDesde=2024-03-01";
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+
+      await usuario.selectOptions(screen.getByLabelText(/ciclo/i), "c-2024");
+
+      expect(replaceMock).not.toHaveBeenCalled();
+      expect(screen.getByLabelText("Creado desde")).toHaveValue("2024-03-01");
+    });
+
     it("una fecha elegida cuenta como filtro: el vacío ofrece limpiarla", async () => {
       server.use(
         http.get("/api/tickets", () => HttpResponse.json({ items: [], total: 0, pagina: 1, porPagina: 10 })),
