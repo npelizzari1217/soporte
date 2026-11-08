@@ -19,6 +19,8 @@ del ticket, y un filtro Desde/Hasta en el listado de tickets.
 - [x] T2 — S2 — inline — commit: ea7f353d
 - [x] T3 — S2 (L7) — inline — commit: 8296ad4f
 - [x] T4 — S1 (L8) — inline — commit: e2d95688
+- [x] T5 — S1 (L10) — inline — commit: 978d16ab
+- [x] T6 — S2 (L10) — inline — commit: 8a90f69e
 
 ## Log
 
@@ -31,3 +33,4 @@ del ticket, y un filtro Desde/Hasta en el listado de tickets.
 - **L7 (usuario, sobre el advisory de L6):** "LAs fechas se ajustan solas al elegir un ciclo cualquiera que no sea el que se esta usando. Arregla las advertencias, y luego hace el push y el PR. luego deployalo"
 - **L8 (revisión nativa, advertencia R3-resolver-nombres-fallo):** el alta de comentario consultaba master después de guardar: si esa base fallaba, respondía error con el comentario ya guardado y el reintento lo duplicaba. Fix: el nombre sale del JWT (`user.nombre`/`user.apellido`), que es el del autor. RED: test con `resolverNombres` rechazado, en rojo con «master caída»; GREEN 97/97. El timeline sigue dependiendo de master, como las tareas (sin cambio).
 - **L9 (evidencia T3):** `elegirCiclo` en `TicketsListView`: un ciclo distinto del de la URL lleva `fechaDesde`/`fechaHasta` a `fechaInicio`/`fechaFin` del ciclo (`GET /ciclos` las da como `YYYY-MM-DD`); «Ciclo activo» toma las del ciclo por defecto; el mismo ciclo no toca las fechas. Mutante con el `onChange` anterior: 3 en rojo. Frontend tickets + shared 68/68, 746 tests; type-check y lint en 0. Ayuda `tickets-listado.md` actualizada.
+- **L10 (usuario, sobre las advertencias de la segunda revisión nativa):** "si, con la correccion de las advertencias". (a) R3/R4: el timeline fallaba entero si master no respondía; ahora `nombresDeAutores` devuelve las entradas sin nombre («por Usuario») y deja la falla en el log con el ticket. RED: test con master caída en rojo con «master caída»; GREEN 98/98. (b) R3: un link con `?ciclo=` y sin fechas aplicaba el año en curso; ahora toma las fechas de ese ciclo. RED: pedía `2026-01-01` en vez de `2024-01-01`; GREEN, frontend tickets + shared 747/747. Typecheck, type-check y lint en 0.
