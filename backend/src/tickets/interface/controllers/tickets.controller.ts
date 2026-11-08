@@ -92,6 +92,7 @@ import {
   toOperacionResponseDto,
   toTicketResponseDto,
 } from '../dtos/ticket.dto';
+import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { instanteDesde, instanteHasta } from '../filtro-fechas';
 import {
   TicketNoEncontradoError,
@@ -886,10 +887,33 @@ export class TicketsController {
       throw toHttpException(result.getError());
     }
     const operaciones = result.getValue();
-    // Un solo lote para todos los autores (sin N+1, odd/autor-y-filtro-fechas S1).
-    const nombres = await this.usuarioMasterChecker.resolverNombres([
-      ...new Set(operaciones.map((operacion) => operacion.autorId)),
-    ]);
+    const nombres = await this.nombresDeAutores(operaciones);
     return operaciones.map((operacion) => toOperacionResponseDto(operacion, nombres));
+  }
+
+  /**
+   * Nombres de los autores del timeline en un solo lote (sin N+1, odd/autor-y-filtro-fechas S1).
+   *
+   * El nombre es un dato accesorio de la entrada: si master no responde, el timeline se muestra
+   * igual, sin nombres (la pantalla dice «por Usuario»), en vez de dejar al usuario sin el
+   * historial del ticket. La falla queda en el log con el ticket, no se descarta.
+   *
+   * @param operaciones Entradas del timeline.
+   * @returns Nombres por id de usuario; vacío si master falló.
+   */
+  private async nombresDeAutores(
+    operaciones: readonly OperacionTicketEntity[],
+  ): Promise<ReadonlyMap<string, { nombre: string; apellido: string }>> {
+    try {
+      return await this.usuarioMasterChecker.resolverNombres([
+        ...new Set(operaciones.map((operacion) => operacion.autorId)),
+      ]);
+    } catch (error: unknown) {
+      this.logger.error(
+        `No se resolvieron los autores del timeline del ticket ${operaciones[0]?.ticketId ?? '?'}: se devuelve sin nombres`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      return new Map();
+    }
   }
 }

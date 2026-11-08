@@ -395,6 +395,22 @@ describe('TicketsController — autor en el timeline (odd/autor-y-filtro-fechas,
     expect(usuarioMasterChecker.resolverNombres).toHaveBeenCalledWith(['root-1', 'u-ana']);
   });
 
+  it('con master caída, el timeline carga igual y sus entradas quedan sin nombre de autor', async () => {
+    const listarTimeline = {
+      execute: vi
+        .fn<ListarTimelineUseCase['execute']>()
+        .mockResolvedValue(Result.ok([fakeOperacion(false)])),
+    };
+    const { controller, usuarioMasterChecker } = buildController({ listarTimeline });
+    usuarioMasterChecker.resolverNombres.mockRejectedValue(new Error('master caída'));
+
+    const res = await controller.timeline(ROOT, 'ticket-1');
+
+    expect(res.map((op) => [op.id, op.autorId, op.autorNombre, op.autorApellido])).toEqual([
+      ['op-1', 'root-1', null, null],
+    ]);
+  });
+
   it('el comentario recién creado vuelve con el nombre del JWT, sin consultar master', async () => {
     const crearComentario = {
       execute: vi
