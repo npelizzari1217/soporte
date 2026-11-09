@@ -5,6 +5,32 @@ import { MasterPrismaClient, TenantPrismaClient } from './prisma-clients';
 import { conUtc } from './utc-connection-string';
 
 /**
+ * Topes de conexiones por pool. Postgres es compartido con otros sistemas del VPS
+ * (`max_connections` es del servidor, no de soporte) y `pg.Pool` sin `max` abre hasta 10 por
+ * pool: master + 9 tenants llegaban solos a 100 y el servidor rechazaba con 53300
+ * (`TooManyConnections`). Con estos topes, soporte no pasa de 5 + 5 por tenant (50 con 9
+ * tenants). Lo que exceda el tope espera en la fila del pool; no falla.
+ */
+export const TOPE_POOL_MASTER = 5;
+export const TOPE_POOL_TENANT = 5;
+/** Una conexión ociosa se devuelve al servidor a los 10 s (el default de `pg`, explícito para que no se pierda). */
+export const OCIOSA_MS = 10_000;
+/**
+ * Cuánto espera un pedido por una conexión libre antes de fallar. El default de `pg` es esperar
+ * para siempre: un pool trabado dejaría al usuario en un "cargando" eterno en vez de un error.
+ */
+export const ESPERA_CONEXION_MS = 10_000;
+
+/** Opciones comunes de todo pool del servicio, con el tope de cada uno. */
+function opcionesDePool(max: number): {
+  max: number;
+  idleTimeoutMillis: number;
+  connectionTimeoutMillis: number;
+} {
+  return { max, idleTimeoutMillis: OCIOSA_MS, connectionTimeoutMillis: ESPERA_CONEXION_MS };
+}
+
+/**
  * PrismaService — factory multi-tenant de clientes Prisma.
  *
  * Aislamiento físico database-per-tenant:
@@ -39,7 +65,7 @@ export class PrismaService implements OnModuleDestroy {
     // la sesión Postgres a TimeZone='UTC' sin importar el TimeZone del rol o
     // de la base. Único punto autorizado a construir `pg.Pool` (ver el
     // comment de utc-connection-string.ts y la fitness rule de ESLint).
-    const pool = conUtc(masterUrl);
+    const pool = conUtc(masterUrl, opcionesDePool(TOPE_POOL_MASTER));
     this.masterPool = pool;
     const adapter = new PrismaPg(pool);
     this.masterClient = new MasterPrismaClient({ adapter });
@@ -63,7 +89,7 @@ export class PrismaService implements OnModuleDestroy {
     if (!this.tenantClients.has(dbName)) {
       const tenantUrl = this.buildTenantUrl(dbName);
       // Pool vía conUtc() — misma garantía que el pool master, ver arriba.
-      const pool = conUtc(tenantUrl);
+      const pool = conUtc(tenantUrl, opcionesDePool(TOPE_POOL_TENANT));
       this.tenantPools.set(dbName, pool);
       const adapter = new PrismaPg(pool);
       const client = new TenantPrismaClient({ adapter });

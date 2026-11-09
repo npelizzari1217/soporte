@@ -57,7 +57,13 @@ vi.mock('@prisma/adapter-pg', () => ({
 // ESM import — gets the mocked Pool from vi.mock('pg').
 // require('pg') dentro de los tests NO usa el interceptor de mocks de Vitest.
 import { Pool } from 'pg';
-import { PrismaService } from './prisma.service';
+import {
+  ESPERA_CONEXION_MS,
+  OCIOSA_MS,
+  PrismaService,
+  TOPE_POOL_MASTER,
+  TOPE_POOL_TENANT,
+} from './prisma.service';
 
 describe('PrismaService (factory multi-tenant)', () => {
   let service: PrismaService;
@@ -124,6 +130,42 @@ describe('PrismaService (factory multi-tenant)', () => {
       const tenantUrl = service.buildTenantUrl('other_db');
 
       expect(tenantUrl).toContain('user:pass@localhost:5432');
+    });
+  });
+
+  describe('tope de conexiones por pool (Postgres compartido del VPS)', () => {
+    // Postgres atiende a varios sistemas con max_connections=100. Sin tope, cada pool de pg abre
+    // hasta 10 conexiones: master + 9 tenants llegaban a 100 y el servidor rechazaba con 53300.
+    it('el pool master tiene un tope, cierra las ociosas y no espera para siempre', () => {
+      const opciones = vi.mocked(Pool).mock.calls[0][0];
+
+      expect(opciones).toEqual(
+        expect.objectContaining({
+          max: TOPE_POOL_MASTER,
+          idleTimeoutMillis: OCIOSA_MS,
+          connectionTimeoutMillis: ESPERA_CONEXION_MS,
+        }),
+      );
+    });
+
+    it('cada pool de tenant tiene su tope y cierra las conexiones ociosas', () => {
+      service.getTenantClient('tenant_a');
+      service.getTenantClient('tenant_b');
+
+      const [, tenantA, tenantB] = vi.mocked(Pool).mock.calls.map((llamada) => llamada[0]);
+      for (const opciones of [tenantA, tenantB]) {
+        expect(opciones).toEqual(
+          expect.objectContaining({
+            max: TOPE_POOL_TENANT,
+            idleTimeoutMillis: OCIOSA_MS,
+            connectionTimeoutMillis: ESPERA_CONEXION_MS,
+          }),
+        );
+      }
+    });
+
+    it('con 9 tenants activos, soporte no pasa de 50 conexiones', () => {
+      expect(TOPE_POOL_MASTER + 9 * TOPE_POOL_TENANT).toBeLessThanOrEqual(50);
     });
   });
 
