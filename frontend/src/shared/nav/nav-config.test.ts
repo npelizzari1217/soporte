@@ -88,6 +88,16 @@ describe("nav-config", () => {
     expect(items.map((i) => i.href)).not.toContain("/admin/feriados-globales");
   });
 
+  it("is_global_admin=true → ve Operación (estado del servicio y correo de prueba, odd/saturacion-conexiones)", () => {
+    const user = makeUser({ permisos: [], is_global_admin: true });
+    expect(visibleNavItems(user, null).map((i) => i.href)).toContain("/admin/operacion");
+  });
+
+  it("is_global_admin=false → NO ve Operación aunque sea ADMINISTRADOR", () => {
+    const user = makeUser({ rol: "ADMINISTRADOR", is_global_admin: false });
+    expect(visibleNavItems(user, null).map((i) => i.href)).not.toContain("/admin/operacion");
+  });
+
   it("is_global_admin=true con permisos=[] → ve TODOS los ítems del menú (ROOT puede TODO)", () => {
     const user = makeUser({ permisos: [], is_global_admin: true });
     const items = visibleNavItems(user, null);
