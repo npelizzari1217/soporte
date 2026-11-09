@@ -82,16 +82,23 @@ describe('MonitorSaturacion', () => {
     await new Promise((resolver) => setImmediate(resolver));
     expect(intentos).toEqual([5]);
 
+    // No reintenta en cada evento (sumaría carga en plena saturación): espera 5 minutos.
     entregar = true;
     ahora += minutos(1);
     monitor.registrar('pool');
     await new Promise((resolver) => setImmediate(resolver));
-    expect(intentos).toEqual([5, 6]);
+    expect(intentos).toEqual([5]);
 
-    ahora += minutos(1);
+    ahora += minutos(4);
     monitor.registrar('pool');
     await new Promise((resolver) => setImmediate(resolver));
-    expect(intentos).toEqual([5, 6]);
+    expect(intentos).toEqual([5, 7]);
+
+    // Entregado: ahora sí corre la hora completa.
+    ahora += minutos(5);
+    for (let i = 0; i < 5; i++) monitor.registrar('pool');
+    await new Promise((resolver) => setImmediate(resolver));
+    expect(intentos).toEqual([5, 7]);
   });
 
   it('un suscriptor que no informa entrega (void) consume la hora de espera, como hasta ahora', async () => {

@@ -25,7 +25,7 @@ export interface EstadoSaturacion {
 
 /**
  * Recibe cada aviso; puede ser asíncrono (un correo). Si devuelve `false`, el aviso no se pudo
- * entregar y no consume la hora de espera: el próximo episodio vuelve a intentarlo.
+ * entregar: en vez de esperar una hora, se reintenta a los 5 minutos.
  */
 export type SuscriptorSaturacion = (
   resumen: ResumenSaturacion,
@@ -37,6 +37,11 @@ export const MONITOR_SATURACION = Symbol('MONITOR_SATURACION');
 const VENTANA_MS = 10 * 60_000;
 const UMBRAL = 5;
 const ENFRIAMIENTO_MS = 60 * 60_000;
+/**
+ * Espera de reintento de un aviso no entregado. No es cero a propósito: reintentar en cada evento
+ * sumaría una consulta a master por evento justo mientras la base está saturada.
+ */
+const REINTENTO_MS = 5 * 60_000;
 /** Tope de memoria ante una avalancha: el umbral es 5, así que 10.000 sobra para el conteo. */
 const TOPE_EVENTOS = 10_000;
 
@@ -59,8 +64,8 @@ export class MonitorSaturacion {
   /** En orden de llegada: se descartan siempre desde el más viejo, sin recorrer la ventana. */
   private readonly eventos: Evento[] = [];
   private ultimoAviso: (ResumenSaturacion & { avisadoEn: Date }) | null = null;
-  /** Desde cuándo corre la hora de espera; `null` si el último aviso no se pudo entregar. */
-  private enfriamientoDesde: number | null = null;
+  /** Hasta cuándo no se vuelve a avisar; `null` si todavía no hubo aviso. */
+  private enfriadoHasta: number | null = null;
   private readonly suscriptores: SuscriptorSaturacion[] = [];
 
   /**
@@ -89,13 +94,12 @@ export class MonitorSaturacion {
     this.eventos.push({ instante: ahora, origen });
     if (this.eventos.length > TOPE_EVENTOS) this.eventos.shift();
 
-    const enfriado =
-      this.enfriamientoDesde === null || ahora - this.enfriamientoDesde >= ENFRIAMIENTO_MS;
+    const enfriado = this.enfriadoHasta === null || ahora >= this.enfriadoHasta;
     if (this.eventos.length < UMBRAL || !enfriado) return;
 
     const resumen = this.resumir(this.eventos);
     this.ultimoAviso = { ...resumen, avisadoEn: new Date(ahora) };
-    this.enfriamientoDesde = ahora;
+    this.enfriadoHasta = ahora + ENFRIAMIENTO_MS;
     // Un suscriptor que falla (SMTP caído) no frena a los demás ni a quien registra, pero su falla
     // queda en el log: el aviso no salió y alguien tiene que enterarse.
     for (const suscriptor of this.suscriptores) {
@@ -121,11 +125,13 @@ export class MonitorSaturacion {
   }
 
   /**
-   * Un aviso que no salió (sin SMTP, sin destinatarios) libera la hora de espera, salvo que otro
-   * episodio ya la haya vuelto a tomar.
+   * Un aviso que no salió (sin SMTP, sin destinatarios) acorta la espera a REINTENTO_MS, salvo que
+   * otro episodio ya la haya vuelto a tomar.
    */
   private liberarSiNoEntrego(entregado: void | boolean, avisadoEn: number): void {
-    if (entregado === false && this.enfriamientoDesde === avisadoEn) this.enfriamientoDesde = null;
+    if (entregado === false && this.enfriadoHasta === avisadoEn + ENFRIAMIENTO_MS) {
+      this.enfriadoHasta = avisadoEn + REINTENTO_MS;
+    }
   }
 
   private loguearFalla(error: unknown): void {
