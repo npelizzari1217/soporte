@@ -9,24 +9,36 @@
  */
 
 import { useState } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { avisarSaturacion, esSaturacion } from "@/shared/lib/saturacion";
 
 interface QueryProviderProps {
   children: React.ReactNode;
 }
 
 export function QueryProvider({ children }: QueryProviderProps) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 30_000,
-            retry: 1,
-          },
+  const [queryClient] = useState(() => {
+    const cliente: QueryClient = new QueryClient({
+      // Saturación del servidor (odd/saturacion-conexiones, S2): cualquier consulta de cualquier
+      // pantalla muestra el mismo aviso, y «Reintentar» vuelve a pedir solo lo que falló.
+      queryCache: new QueryCache({
+        onError: (error) => {
+          if (esSaturacion(error)) {
+            avisarSaturacion(() => {
+              void cliente.refetchQueries({ predicate: (query) => query.state.status === "error" });
+            });
+          }
         },
       }),
-  );
+      defaultOptions: {
+        queries: {
+          staleTime: 30_000,
+          retry: 1,
+        },
+      },
+    });
+    return cliente;
+  });
 
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }

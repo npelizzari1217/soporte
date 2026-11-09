@@ -31,6 +31,14 @@ describe("notifyError", () => {
     expect(toast.error).toHaveBeenCalledWith("El título es obligatorio. La prioridad es inválida.");
   });
 
+  it("saturated server (SERVICIO_SATURADO) → shows the saturation notice with its fixed id, not the raw message", () => {
+    notifyError(new ApiError(503, "Mensaje del backend", ["Mensaje del backend"], undefined, "SERVICIO_SATURADO"));
+    expect(toast.error).toHaveBeenCalledWith(
+      "El sistema está saturado en este momento",
+      expect.objectContaining({ id: "servicio-saturado" }),
+    );
+  });
+
   it("plain unexpected Error (not ApiError) → falls back to a generic message, never crashes", () => {
     notifyError(new Error("boom"));
     expect(toast.error).toHaveBeenCalledWith("Ocurrió un error inesperado. Intente de nuevo.");
