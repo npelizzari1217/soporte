@@ -11,7 +11,11 @@
 import { ArgumentsHost, HttpStatus } from '@nestjs/common';
 import { AbstractHttpAdapter, BaseExceptionFilter, HttpAdapterHost } from '@nestjs/core';
 import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
-import { esErrorPrismaConocido, PrismaExceptionFilter } from './prisma-exception.filter';
+import {
+  esErrorPrismaConocido,
+  MENSAJE_SERVICIO_SATURADO,
+  PrismaExceptionFilter,
+} from './prisma-exception.filter';
 import { ILogger } from '../../domain/ports/i-logger.port';
 
 describe('esErrorPrismaConocido — guard estructural (R5)', () => {
@@ -98,15 +102,17 @@ function crearHostMock(request: { method: string; url: string }, response: objec
 describe('PrismaExceptionFilter — catch()', () => {
   let filter: PrismaExceptionFilter;
   let logger: ILogger;
+  const monitor = { registrar: vi.fn() };
   let host: ArgumentsHost;
   let replySpy: ReturnType<typeof vi.fn>;
   const response = {};
   const request = { method: 'POST', url: '/sectores' };
 
   beforeEach(() => {
+    monitor.registrar.mockClear();
     replySpy = vi.fn();
     logger = { log: vi.fn(), error: vi.fn() };
-    filter = new PrismaExceptionFilter(crearAdapterHostMock(replySpy), logger);
+    filter = new PrismaExceptionFilter(crearAdapterHostMock(replySpy), logger, monitor);
     host = crearHostMock(request, response);
   });
 
@@ -188,5 +194,85 @@ describe('PrismaExceptionFilter — catch()', () => {
     expect(mensajeLogueado).not.toContain('meta');
     expect(mensajeLogueado).not.toContain('driverAdapterError');
     expect(mensajeLogueado).not.toContain('originalMessage');
+  });
+});
+
+describe('PrismaExceptionFilter — saturación de conexiones (odd/saturacion-conexiones, S2)', () => {
+  let filter: PrismaExceptionFilter;
+  let logger: ILogger;
+  const monitor = { registrar: vi.fn() };
+  let host: ArgumentsHost;
+  let replySpy: ReturnType<typeof vi.fn>;
+  const request = { method: 'GET', url: '/tickets?pagina=1' };
+
+  beforeEach(() => {
+    monitor.registrar.mockClear();
+    replySpy = vi.fn();
+    logger = { log: vi.fn(), error: vi.fn() };
+    filter = new PrismaExceptionFilter(crearAdapterHostMock(replySpy), logger, monitor);
+    host = crearHostMock(request, {});
+  });
+
+  // Las tres formas medidas contra Postgres real (L5 del documento).
+  it.each([
+    {
+      origen: 'servidor',
+      exception: crearErrorPrisma('P2037', 'Too many database connections opened'),
+    },
+    { origen: 'pool', exception: new Error('timeout exceeded when trying to connect') },
+    {
+      origen: 'transaccion',
+      exception: crearErrorPrisma(
+        'P2028',
+        'Transaction API error: Unable to start a transaction in the given time.',
+      ),
+    },
+  ])(
+    '$origen → 503 con código SERVICIO_SATURADO y el mensaje para el usuario',
+    ({ origen, exception }) => {
+      filter.catch(exception, host);
+
+      expect(replySpy).toHaveBeenCalledTimes(1);
+      const [, body, status] = replySpy.mock.calls[0] as [object, Record<string, unknown>, number];
+      expect(status).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+      expect(body).toEqual({
+        statusCode: 503,
+        code: 'SERVICIO_SATURADO',
+        message: MENSAJE_SERVICIO_SATURADO,
+      });
+      expect(logger.error).toHaveBeenCalledWith(
+        `SATURACION_CONEXIONES | origen=${origen} | method=GET | path=/tickets?pagina=1`,
+      );
+      expect(monitor.registrar).toHaveBeenCalledWith(origen);
+    },
+  );
+
+  it('un P2028 que no es falta de conexión sigue siendo un 500 sin mapear', () => {
+    const superCatchSpy = vi
+      .spyOn(BaseExceptionFilter.prototype, 'catch')
+      .mockImplementation(() => undefined);
+    const exception = crearErrorPrisma(
+      'P2028',
+      'Transaction already closed: the timeout for this transaction was 5000 ms.',
+    );
+
+    filter.catch(exception, host);
+
+    expect(superCatchSpy).toHaveBeenCalledWith(exception, host);
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(monitor.registrar).not.toHaveBeenCalled();
+    superCatchSpy.mockRestore();
+  });
+
+  it('un Error común con otro mensaje sigue delegándose intacto', () => {
+    const superCatchSpy = vi
+      .spyOn(BaseExceptionFilter.prototype, 'catch')
+      .mockImplementation(() => undefined);
+    const exception = new Error('connection terminated unexpectedly');
+
+    filter.catch(exception, host);
+
+    expect(superCatchSpy).toHaveBeenCalledWith(exception, host);
+    superCatchSpy.mockRestore();
   });
 });
