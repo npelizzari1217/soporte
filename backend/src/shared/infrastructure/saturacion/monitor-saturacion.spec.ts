@@ -68,6 +68,53 @@ describe('MonitorSaturacion', () => {
     expect(avisos).toHaveLength(2);
   });
 
+  it('si el aviso no se pudo entregar, no consume la hora de espera: el próximo episodio vuelve a avisar', async () => {
+    let ahora = INICIO.getTime();
+    const monitor = new MonitorSaturacion({ error: vi.fn() }, () => new Date(ahora));
+    const intentos: number[] = [];
+    let entregar = false;
+    monitor.suscribir(async (resumen) => {
+      intentos.push(resumen.eventos);
+      return entregar;
+    });
+
+    for (let i = 0; i < 5; i++) monitor.registrar('pool');
+    await new Promise((resolver) => setImmediate(resolver));
+    expect(intentos).toEqual([5]);
+
+    entregar = true;
+    ahora += minutos(1);
+    monitor.registrar('pool');
+    await new Promise((resolver) => setImmediate(resolver));
+    expect(intentos).toEqual([5, 6]);
+
+    ahora += minutos(1);
+    monitor.registrar('pool');
+    await new Promise((resolver) => setImmediate(resolver));
+    expect(intentos).toEqual([5, 6]);
+  });
+
+  it('un suscriptor que no informa entrega (void) consume la hora de espera, como hasta ahora', async () => {
+    const { monitor, avisos, avanzar } = crearMonitor();
+    for (let i = 0; i < 5; i++) monitor.registrar('pool');
+    await new Promise((resolver) => setImmediate(resolver));
+    avanzar(minutos(1));
+    monitor.registrar('pool');
+    await new Promise((resolver) => setImmediate(resolver));
+
+    expect(avisos).toHaveLength(1);
+  });
+
+  it('bajo una avalancha, guarda como máximo 10.000 eventos y sigue respondiendo rápido', () => {
+    const { monitor } = crearMonitor();
+    const inicio = performance.now();
+
+    for (let i = 0; i < 50_000; i++) monitor.registrar('servidor');
+
+    expect(monitor.estado().eventosRecientes).toBe(10_000);
+    expect(performance.now() - inicio).toBeLessThan(1_000);
+  });
+
   it('el estado informa el último aviso y las saturaciones de los últimos 10 minutos', () => {
     const { monitor, avanzar } = crearMonitor();
     expect(monitor.estado()).toEqual({ eventosRecientes: 0, ultimoAviso: null });
