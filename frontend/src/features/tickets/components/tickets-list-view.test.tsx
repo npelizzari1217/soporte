@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { TicketsListView } from "./tickets-list-view";
@@ -490,6 +490,37 @@ describe("TicketsListView", () => {
       await waitFor(() => expect(urls.at(-1)?.searchParams.get("fechaDesde")).toBe("2024-01-01"));
       expect(urls.at(-1)?.searchParams.get("fechaHasta")).toBe("2024-12-31");
       expect(screen.getByLabelText("Creado desde")).toHaveValue("2024-01-01");
+    });
+
+    it("con ciclo en la URL y los ciclos todavía cargando, no pide el año en curso antes que el ciclo", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-08T12:00:00.000Z"));
+      server.use(
+        http.get("/api/ciclos", async () => {
+          await delay(150);
+          return HttpResponse.json(CICLOS_CON_ACTIVO);
+        }),
+      );
+      const urls = capturarPedido();
+      currentSearch = "ciclo=c-2024";
+
+      renderWithProviders(<TicketsListView />, { user });
+      await screen.findByText("Impresora rota");
+
+      expect(urls.length).toBeGreaterThan(0);
+      expect(urls.map((url) => url.searchParams.get("fechaDesde"))).toEqual(urls.map(() => "2024-01-01"));
+    });
+
+    it("si los ciclos no cargan, el link con ciclo cae al año en curso en vez de quedar esperando", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-08T12:00:00.000Z"));
+      server.use(http.get("/api/ciclos", () => new HttpResponse(null, { status: 500 })));
+      const urls = capturarPedido();
+      currentSearch = "ciclo=c-2024";
+
+      renderWithProviders(<TicketsListView />, { user });
+
+      await waitFor(() => expect(urls.at(-1)?.searchParams.get("fechaDesde")).toBe("2026-01-01"), { timeout: 5000 });
     });
 
     it("elegir el ciclo que ya se está usando no toca las fechas ajustadas", async () => {

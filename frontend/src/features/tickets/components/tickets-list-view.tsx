@@ -60,6 +60,7 @@ import { PriorityBadge } from "@/components/ui/priority-badge";
 import { notifyError } from "@/shared/lib/toast";
 import type { Ticket, TicketsFiltros } from "../types";
 import { puedeAltaManualEnAlgunModulo } from "../lib/alta-manual";
+import { debeEsperarCicloDeLaUrl } from "../lib/espera-ciclo";
 
 const PAGE_SIZE = 10;
 
@@ -182,7 +183,9 @@ export function TicketsListView() {
     [filtros, cicloSeleccionado, fechaDesde, fechaHasta],
   );
 
-  const ticketsQuery = useTickets(filtrosEfectivos);
+  const ticketsQuery = useTickets(filtrosEfectivos, {
+    enabled: !debeEsperarCicloDeLaUrl(filtros, ciclosQuery),
+  });
 
   /**
    * Cambio de ciclo (odd/autor-y-filtro-fechas, L7): las fechas pasan a ser las del ciclo elegido.
