@@ -13,6 +13,7 @@ import {
   Package,
   Cog,
   PartyPopper,
+  Activity,
   Clock,
 } from "lucide-react";
 import type { JwtPayload } from "@/shared/api/types";
@@ -199,13 +200,22 @@ const ROOT_SECTION_ITEMS: NavItem[] = [
     // cualquier autenticado del tenant, no gateada por `esAdminCliente`).
     visible: (_can, isGlobalAdmin) => isGlobalAdmin,
   },
+  {
+    href: "/admin/operacion",
+    label: "Operación",
+    icon: Activity,
+    // Estado del servicio y correo de prueba de las alertas (odd/saturacion-conexiones, S3).
+    // Exclusivo de ROOT: el backend usa GlobalAdminGuard.
+    visible: (_can, isGlobalAdmin) => isGlobalAdmin,
+  },
 ];
 
 /**
  * NAV_SECTIONS — single source of truth for the sidebar navigation (ADR-4),
- * agrupada. La sección "ROOT" agrupa los 3 ítems exclusivos de plataforma
- * (Clientes, Ciclos master, Tipos de componente) bajo un header visible SOLO
- * para `is_global_admin`; el resto vive en la sección default (sin header).
+ * agrupada. La sección "ROOT" agrupa los ítems exclusivos de plataforma
+ * (`ROOT_SECTION_ITEMS`: Clientes, Ciclos master, Feriados nacionales, Operación)
+ * bajo un header visible SOLO para `is_global_admin`; el resto vive en la sección
+ * default (sin header).
  */
 export const NAV_SECTIONS: NavSection[] = [
   { title: null, items: DEFAULT_SECTION_ITEMS },

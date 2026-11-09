@@ -1,6 +1,7 @@
 import { Inject, Module, OnModuleInit } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { leerSmtpSistema } from '../config/smtp-sistema';
+import { SmtpConnectionVerifier } from '../notificaciones/infrastructure/email/smtp-connection-verifier';
 import { SmtpEmailSender } from '../notificaciones/infrastructure/email/smtp-email-sender';
 import { ILogger, LOGGER } from '../shared/domain/ports/i-logger.port';
 import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
@@ -9,6 +10,7 @@ import {
   MonitorSaturacion,
 } from '../shared/infrastructure/saturacion/monitor-saturacion';
 import { AvisarSaturacionARoot } from './application/avisar-saturacion-a-root';
+import { ProbarCorreoAlertas } from './application/probar-correo-alertas';
 import { PrismaDestinatariosRoot } from './infrastructure/prisma-destinatarios-root';
 import { OperacionController } from './interface/operacion.controller';
 
@@ -32,6 +34,20 @@ import { OperacionController } from './interface/operacion.controller';
           new PrismaDestinatariosRoot(prisma),
           smtp ? new SmtpEmailSender(smtp, logger) : null,
           logger,
+        );
+      },
+      inject: [PrismaService, LOGGER],
+    },
+    {
+      provide: ProbarCorreoAlertas,
+      useFactory: (prisma: PrismaService, logger: ILogger) => {
+        const smtp = leerSmtpSistema(process.env);
+        return new ProbarCorreoAlertas(
+          smtp,
+          new SmtpConnectionVerifier(),
+          // Sin cuenta del sistema, el caso de uso corta antes de enviar: este sender no se usa.
+          smtp ? new SmtpEmailSender(smtp, logger) : { send: async () => undefined },
+          new PrismaDestinatariosRoot(prisma),
         );
       },
       inject: [PrismaService, LOGGER],
