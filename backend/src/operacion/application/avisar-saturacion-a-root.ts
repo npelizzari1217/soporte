@@ -42,20 +42,25 @@ export class AvisarSaturacionARoot {
     private readonly logger: Pick<ILogger, 'error'>,
   ) {}
 
-  /** @param resumen Episodio que disparó el aviso. */
-  async execute(resumen: ResumenSaturacion): Promise<void> {
+  /**
+   * @param resumen Episodio que disparó el aviso.
+   * @returns `false` si no pudo salir por correo (sin SMTP o sin ROOT activos): el monitor no
+   *   consume la hora de espera. Una falla de transporte SMTP no se ve acá: `SmtpEmailSender` la
+   *   registra en su propio log y no la propaga.
+   */
+  async execute(resumen: ResumenSaturacion): Promise<boolean> {
     const detalle =
       `eventos=${resumen.eventos} | servidor=${resumen.porOrigen.servidor} | pool=${resumen.porOrigen.pool} | ` +
       `transaccion=${resumen.porOrigen.transaccion} | desde=${resumen.desde.toISOString()} | ` +
       `hasta=${resumen.hasta.toISOString()}`;
     if (!this.emailSender) {
       this.logger.error(`ALERTA_SATURACION_SIN_SMTP | ${detalle}`);
-      return;
+      return false;
     }
     const emails = await this.destinatarios.emailsDeRootActivos();
     if (emails.length === 0) {
       this.logger.error(`ALERTA_SATURACION_SIN_DESTINATARIOS | ${detalle}`);
-      return;
+      return false;
     }
 
     const subject = `Soporte: la base de datos se saturó ${resumen.eventos} veces en 10 minutos`;
@@ -73,5 +78,6 @@ export class AvisarSaturacionARoot {
     for (const to of emails) {
       await this.emailSender.send({ to, subject, text });
     }
+    return true;
   }
 }

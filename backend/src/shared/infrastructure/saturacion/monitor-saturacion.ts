@@ -23,8 +23,13 @@ export interface EstadoSaturacion {
   ultimoAviso: (ResumenSaturacion & { avisadoEn: Date }) | null;
 }
 
-/** Recibe cada aviso; puede ser asíncrono (un correo). */
-export type SuscriptorSaturacion = (resumen: ResumenSaturacion) => void | Promise<void>;
+/**
+ * Recibe cada aviso; puede ser asíncrono (un correo). Si devuelve `false`, el aviso no se pudo
+ * entregar: en vez de esperar una hora, se reintenta a los 5 minutos.
+ */
+export type SuscriptorSaturacion = (
+  resumen: ResumenSaturacion,
+) => void | boolean | Promise<void | boolean>;
 
 /** Token de inyección del monitor (singleton del proceso). */
 export const MONITOR_SATURACION = Symbol('MONITOR_SATURACION');
@@ -32,6 +37,13 @@ export const MONITOR_SATURACION = Symbol('MONITOR_SATURACION');
 const VENTANA_MS = 10 * 60_000;
 const UMBRAL = 5;
 const ENFRIAMIENTO_MS = 60 * 60_000;
+/**
+ * Espera de reintento de un aviso no entregado. No es cero a propósito: reintentar en cada evento
+ * sumaría una consulta a master por evento justo mientras la base está saturada.
+ */
+const REINTENTO_MS = 5 * 60_000;
+/** Tope de memoria ante una avalancha: el umbral es 5, así que 10.000 sobra para el conteo. */
+const TOPE_EVENTOS = 10_000;
 
 interface Evento {
   instante: number;
@@ -49,8 +61,11 @@ interface Evento {
  * interesados (el correo a ROOT) se suscriben.
  */
 export class MonitorSaturacion {
-  private eventos: Evento[] = [];
+  /** En orden de llegada: se descartan siempre desde el más viejo, sin recorrer la ventana. */
+  private readonly eventos: Evento[] = [];
   private ultimoAviso: (ResumenSaturacion & { avisadoEn: Date }) | null = null;
+  /** Hasta cuándo no se vuelve a avisar; `null` si todavía no hubo aviso. */
+  private enfriadoHasta: number | null = null;
   private readonly suscriptores: SuscriptorSaturacion[] = [];
 
   /**
@@ -75,22 +90,27 @@ export class MonitorSaturacion {
    */
   registrar(origen: OrigenSaturacion): void {
     const ahora = this.reloj().getTime();
-    this.eventos = this.recientes(ahora);
+    this.descartarViejos(ahora);
     this.eventos.push({ instante: ahora, origen });
+    if (this.eventos.length > TOPE_EVENTOS) this.eventos.shift();
 
-    const enfriado =
-      this.ultimoAviso === null || ahora - this.ultimoAviso.avisadoEn.getTime() >= ENFRIAMIENTO_MS;
+    const enfriado = this.enfriadoHasta === null || ahora >= this.enfriadoHasta;
     if (this.eventos.length < UMBRAL || !enfriado) return;
 
     const resumen = this.resumir(this.eventos);
     this.ultimoAviso = { ...resumen, avisadoEn: new Date(ahora) };
+    this.enfriadoHasta = ahora + ENFRIAMIENTO_MS;
     // Un suscriptor que falla (SMTP caído) no frena a los demás ni a quien registra, pero su falla
     // queda en el log: el aviso no salió y alguien tiene que enterarse.
     for (const suscriptor of this.suscriptores) {
       try {
         const resultado = suscriptor(resumen);
         if (resultado instanceof Promise) {
-          resultado.catch((error: unknown) => this.loguearFalla(error));
+          resultado
+            .then((entregado) => this.liberarSiNoEntrego(entregado, ahora))
+            .catch((error: unknown) => this.loguearFalla(error));
+        } else {
+          this.liberarSiNoEntrego(resultado, ahora);
         }
       } catch (error: unknown) {
         this.loguearFalla(error);
@@ -100,10 +120,18 @@ export class MonitorSaturacion {
 
   /** @returns Saturaciones recientes y el último aviso, para la pantalla de ROOT. */
   estado(): EstadoSaturacion {
-    return {
-      eventosRecientes: this.recientes(this.reloj().getTime()).length,
-      ultimoAviso: this.ultimoAviso,
-    };
+    this.descartarViejos(this.reloj().getTime());
+    return { eventosRecientes: this.eventos.length, ultimoAviso: this.ultimoAviso };
+  }
+
+  /**
+   * Un aviso que no salió (sin SMTP, sin destinatarios) acorta la espera a REINTENTO_MS, salvo que
+   * otro episodio ya la haya vuelto a tomar.
+   */
+  private liberarSiNoEntrego(entregado: void | boolean, avisadoEn: number): void {
+    if (entregado === false && this.enfriadoHasta === avisadoEn + ENFRIAMIENTO_MS) {
+      this.enfriadoHasta = avisadoEn + REINTENTO_MS;
+    }
   }
 
   private loguearFalla(error: unknown): void {
@@ -112,8 +140,10 @@ export class MonitorSaturacion {
     );
   }
 
-  private recientes(ahora: number): Evento[] {
-    return this.eventos.filter((evento) => ahora - evento.instante < VENTANA_MS);
+  private descartarViejos(ahora: number): void {
+    while (this.eventos.length > 0 && ahora - this.eventos[0].instante >= VENTANA_MS) {
+      this.eventos.shift();
+    }
   }
 
   private resumir(eventos: Evento[]): ResumenSaturacion {

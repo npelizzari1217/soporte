@@ -27,8 +27,7 @@ describe('AvisarSaturacionARoot', () => {
   it('manda un correo a cada ROOT activo con el detalle del episodio en hora argentina', async () => {
     const { caso, enviados } = crear({ conSmtp: true });
 
-    await caso.execute(RESUMEN);
-
+    expect(await caso.execute(RESUMEN)).toBe(true);
     expect(enviados.map((m) => m.to)).toEqual(['ana@sesitec.net', 'luis@sesitec.net']);
     expect(enviados[0].subject).toBe('Soporte: la base de datos se saturó 7 veces en 10 minutos');
     expect(enviados[0].text).toBe(
@@ -46,7 +45,8 @@ describe('AvisarSaturacionARoot', () => {
   it('sin cuenta SMTP del sistema, deja el aviso completo en el log y no falla', async () => {
     const { caso, logger } = crear({ conSmtp: false });
 
-    await caso.execute(RESUMEN);
+    // No entregado: el monitor no consume la hora de espera.
+    expect(await caso.execute(RESUMEN)).toBe(false);
 
     expect(logger.error).toHaveBeenCalledWith(
       'ALERTA_SATURACION_SIN_SMTP | eventos=7 | servidor=2 | pool=5 | transaccion=0 | ' +
@@ -57,7 +57,7 @@ describe('AvisarSaturacionARoot', () => {
   it('sin ROOT activos, lo deja en el log en vez de no avisar a nadie en silencio', async () => {
     const { caso, enviados, logger } = crear({ conSmtp: true, roots: [] });
 
-    await caso.execute(RESUMEN);
+    expect(await caso.execute(RESUMEN)).toBe(false);
 
     expect(enviados).toEqual([]);
     expect(logger.error).toHaveBeenCalledWith(
