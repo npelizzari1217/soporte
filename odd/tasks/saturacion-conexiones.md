@@ -19,10 +19,10 @@ El Postgres del VPS es compartido; al agotarse las conexiones, el listado de tic
 
 ## Tasks
 
-- [ ] T1 — S1 — inline — commit: —
-- [ ] T2 — S2 (backend: error de saturación reconocido y mapeado) — inline — commit: —
-- [ ] T3 — S2 (front: mensaje claro y pasos en cualquier pantalla) — inline — commit: —
-- [ ] T4 — S3 (conteo, correo a ROOT y aviso en pantalla) — inline — commit: —
+- [x] T1 — S1 — inline — commit: 7f9c15d8
+- [x] T2 — S2 (backend: error de saturación reconocido y mapeado) — inline — commit: 2f7d92bc
+- [x] T3 — S2 (front: mensaje claro y pasos en cualquier pantalla) — inline — commit: b1a02e42
+- [x] T4 — S3 (conteo, correo a ROOT y aviso en pantalla) — inline — commit: 2f7d92bc + 8d78c3f0
 
 ## Log
 
@@ -34,3 +34,4 @@ El Postgres del VPS es compartido; al agotarse las conexiones, el listado de tic
 - **L6 (exploración T4):** `EMAIL_SENDER` es `TenantAwareEmailSender`: usa el SMTP de cada cliente y, sin contexto de tenant, no envía (`EMAIL_SIN_TENANT_CONTEXT`). Las `SMTP_*` del `.env.example` solo alimentan el backfill. En producción las seis `SMTP_*` están AUSENTES (verificado sin imprimir valores).
 - **L7 (usuario):** "Cuenta SMTP del sistema (nueva)": la alerta sale por `SMTP_*` del `.env` del VPS, que carga el dueño. Sin ellas, la alerta queda en el log y en el aviso en pantalla a ROOT.
 - **L8 (implementación, pendiente de commit):** T1: `TOPE_POOL_MASTER=5`, `TOPE_POOL_TENANT=5`, `OCIOSA_MS=10_000`, `ESPERA_CONEXION_MS=10_000` en `prisma.service.ts`; RED con el pool construido sin `max`. T2: `origenDeSaturacion` y 503 `SERVICIO_SATURADO` en `prisma-exception.filter.ts`, log `SATURACION_CONEXIONES | origen= | method= | path=`; RED con las tres formas de L5, hermanos (otro `P2028`, otro `Error`) siguen en 500. T3: `shared/lib/saturacion.ts` (aviso con id fijo, pasos y «Reintentar»), `QueryCache.onError` en `query-provider.tsx` y `notifyError`; RED y GREEN, frontend 2840/2840. T4: `MonitorSaturacion` (5 en 10 min, uno por hora, falla de suscriptor al log), `OperacionModule` (correo a ROOT activos por `SMTP_*`, `ALERTA_SATURACION_SIN_SMTP` / `_SIN_DESTINATARIOS` en el log), `GET /operacion/saturacion` con `JwtAuthGuard` + `GlobalAdminGuard`, banner `AvisoSaturacionRoot` en el shell (24 h). El smoke del contenedor atrapó la falta de `AuthModule`. T2 y el backend de T4 van en un mismo commit: el filtro registra en el monitor y no compilan por separado. README y `.env.example` corregidos: `SMTP_*` ya no es «solo para el backfill».
+- **L9 (verificación y entrega):** la suite completa local no terminó (tope de 40 min, Postgres compartido con la suite de educandow); sus "FAIL" de `test/fixtures/entorno` son salida esperada de procesos hijos (la config excluye `test/fixtures/**`). El CI de la PR #543 corrió la suite completa con el tope: backend PASS (11m40s), frontend PASS. Revisión nativa (riesgo, resiliencia, confiabilidad) aprobada con advertencias no bloqueantes: el enfriamiento se consume aunque el correo falle; `registrar` recorre la ventana entera en cada evento (acotado a 10 min); el correo usa una sola fecha si el episodio cruza la medianoche; el cableado del módulo lo cubre el smoke. "El correo corta en el primer destinatario" no aplica: `SmtpEmailSender` no lanza. Merge `3b0604bb`; dump `C:\soporte\backups\utc-backfill-20261109-082555`; `DEPLOY OK (3b0604bb)`. Producción: `/api/operacion/saturacion` responde 401 sin sesión; `max_connections`=200, 28 en uso, soporte 1 recién arrancado. Pendiente del dueño: cargar `SMTP_*` en `C:\soporte\backend\.env`.
