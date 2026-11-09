@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { ApiError } from "@/shared/api/types";
+import { avisarSaturacion, esSaturacion } from "./saturacion";
 
 /**
  * Toast helpers (ADR-8: Error → toast sonner con `messages`).
@@ -15,6 +16,11 @@ export function notifySuccess(message: string): void {
 }
 
 export function notifyError(err: unknown): void {
+  // Una operación que falla por saturación muestra el mismo aviso que las consultas (mismo id).
+  if (esSaturacion(err)) {
+    avisarSaturacion();
+    return;
+  }
   if (err instanceof ApiError) {
     toast.error(err.messages.join(" "));
     return;

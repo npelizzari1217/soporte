@@ -5,7 +5,11 @@ import { PrismaService } from './infrastructure/persistence/prisma.service';
 import { PrismaExceptionFilter } from './infrastructure/filters/prisma-exception.filter';
 import { TenantContext } from './tenancy/tenant-context';
 import { MasterContext } from './tenancy/master-context';
-import { LOGGER } from './domain/ports/i-logger.port';
+import { ILogger, LOGGER } from './domain/ports/i-logger.port';
+import {
+  MONITOR_SATURACION,
+  MonitorSaturacion,
+} from './infrastructure/saturacion/monitor-saturacion';
 import { NestLoggerAdapter } from './infrastructure/logging/nest-logger.adapter';
 import {
   PrismaTenantTransactionRunner,
@@ -112,10 +116,18 @@ import { entorno } from '../config/entorno';
     // AppModule sería invisible para estos últimos (mismo motivo por el que
     // el ValidationPipe NO vive ahí). No se exporta: los enhancers
     // (filtros/guards/interceptors/pipes) no son exportables en Nest.
+    // Conteo de saturaciones de la base (odd/saturacion-conexiones, S3): singleton del proceso; el
+    // filtro registra y OperacionModule se suscribe para avisar a ROOT.
+    {
+      provide: MONITOR_SATURACION,
+      useFactory: (logger: ILogger) => new MonitorSaturacion(logger),
+      inject: [LOGGER],
+    },
     { provide: APP_FILTER, useClass: PrismaExceptionFilter },
   ],
   exports: [
     PrismaService,
+    MONITOR_SATURACION,
     TenantContext,
     MasterContext,
     LOGGER,

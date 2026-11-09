@@ -30,9 +30,15 @@ import {
   ConflictException,
   HttpStatus,
   Inject,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { BaseExceptionFilter, HttpAdapterHost } from '@nestjs/core';
 import { ILogger, LOGGER } from '../../domain/ports/i-logger.port';
+import {
+  MONITOR_SATURACION,
+  MonitorSaturacion,
+  OrigenSaturacion,
+} from '../saturacion/monitor-saturacion';
 
 /** Forma mínima que el filtro necesita de un error conocido de Prisma. */
 export interface ErrorPrismaConocido {
@@ -107,11 +113,46 @@ const MAPEO_ERRORES_PRISMA: ReadonlyMap<string, MapeoErrorPrisma> = new Map([
   ],
 ]);
 
+/**
+ * Mensaje al usuario cuando el servidor de base de datos no tiene conexiones libres
+ * (odd/saturacion-conexiones, S2). El front lo acompaña con los pasos a seguir.
+ */
+export const MENSAJE_SERVICIO_SATURADO =
+  'El sistema está recibiendo muchas consultas en este momento y no pudo completar su pedido. ' +
+  'Sus datos no se perdieron.';
+
+/**
+ * Reconoce una falta de conexión a la base, en las tres formas medidas contra Postgres real
+ * (odd/saturacion-conexiones, L5):
+ * - `servidor`: Postgres sin conexiones (`53300`), que Prisma entrega como `P2037`.
+ * - `pool`: el pool propio llegó a su tope y venció `connectionTimeoutMillis`; `pg` lanza un
+ *   `Error` común, sin `code`, con este mensaje exacto.
+ * - `transaccion`: una transacción interactiva no consiguió conexión en su `maxWait`. `P2028`
+ *   también cubre otros errores de transacción, así que se exige además el mensaje.
+ *
+ * @param error Excepción cruda.
+ * @returns El origen, o `null` si no es una falta de conexión.
+ */
+export function origenDeSaturacion(error: unknown): OrigenSaturacion | null {
+  if (esErrorPrismaConocido(error)) {
+    if (error.code === 'P2037') return 'servidor';
+    if (error.code === 'P2028' && error.message.includes('Unable to start a transaction')) {
+      return 'transaccion';
+    }
+    return null;
+  }
+  if (error instanceof Error && error.message === 'timeout exceeded when trying to connect') {
+    return 'pool';
+  }
+  return null;
+}
+
 @Catch()
 export class PrismaExceptionFilter extends BaseExceptionFilter {
   constructor(
     adapterHost: HttpAdapterHost,
     @Inject(LOGGER) private readonly logger: Pick<ILogger, 'error'>,
+    @Inject(MONITOR_SATURACION) private readonly monitor: Pick<MonitorSaturacion, 'registrar'>,
   ) {
     super(adapterHost.httpAdapter);
   }
@@ -131,6 +172,12 @@ export class PrismaExceptionFilter extends BaseExceptionFilter {
    *   través de `super.catch()` (así lo exige `BaseExceptionFilter`).
    */
   catch(exception: unknown, host: ArgumentsHost): void {
+    const origen = origenDeSaturacion(exception);
+    if (origen) {
+      this.responderSaturacion(origen, host);
+      return;
+    }
+
     if (!esErrorPrismaConocido(exception)) {
       super.catch(exception, host);
       return;
@@ -146,6 +193,28 @@ export class PrismaExceptionFilter extends BaseExceptionFilter {
 
     this.loguearInterceptado(exception, mapeo, host);
     super.catch(crearHttpException(mapeo), host);
+  }
+
+  /**
+   * Responde 503 con un código propio (`SERVICIO_SATURADO`) para que el front muestre el mensaje
+   * y los pasos, en vez de un 500 genérico. No es un bug del servidor: es falta de capacidad, y
+   * reintentar en unos segundos funciona. El log queda grepeable por `SATURACION_CONEXIONES`.
+   */
+  private responderSaturacion(origen: OrigenSaturacion, host: ArgumentsHost): void {
+    const request = host.switchToHttp().getRequest<{ method: string; url: string }>();
+    this.logger.error(
+      `SATURACION_CONEXIONES | origen=${origen} | method=${request.method} | path=${request.url}`,
+    );
+    // Cuenta para el aviso a ROOT cuando se repite (S3).
+    this.monitor.registrar(origen);
+    super.catch(
+      new ServiceUnavailableException({
+        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+        code: 'SERVICIO_SATURADO',
+        message: MENSAJE_SERVICIO_SATURADO,
+      }),
+      host,
+    );
   }
 
   /**

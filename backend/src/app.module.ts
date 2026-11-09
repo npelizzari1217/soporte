@@ -24,6 +24,7 @@ import { FormularioPublicoModule } from './publico/formulario-publico.module';
 import { IntegracionesModule } from './integraciones/integraciones.module';
 import { AsistenteModule } from './asistente/asistente.module';
 import { ApiV1Module } from './integraciones/api-v1.module';
+import { OperacionModule } from './operacion/operacion.module';
 import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware';
 
 /**
@@ -77,6 +78,8 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
     IntegracionesModule,
     AsistenteModule,
     ApiV1Module,
+    // Avisos de operación a ROOT (odd/saturacion-conexiones, S3).
+    OperacionModule,
   ],
   controllers: [],
   providers: [
