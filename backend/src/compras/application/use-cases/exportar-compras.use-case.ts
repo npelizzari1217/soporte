@@ -137,7 +137,8 @@ export class ExportarComprasUseCase {
   }
 
   /**
-   * Arma las columnas del archivo: las fijas de cabecera más una de total
+   * Arma las columnas del archivo: las fijas de cabecera (la descripción va
+   * completa, sin recortar) más una de total
    * por cada moneda presente en el conjunto exportado. "Tipo" queda vacía en
    * una compra sin tipo (odd/compras-por-tipo, S4, S5).
    *
@@ -155,6 +156,7 @@ export class ExportarComprasUseCase {
       { encabezado: 'Número', valor: (compra) => compra.numero },
       { encabezado: 'Fecha de solicitud', valor: (compra) => fechaCelda(compra.fechaSolicitud) },
       { encabezado: 'Motivo', valor: (compra) => compra.motivo },
+      { encabezado: 'Descripción', valor: (compra) => compra.descripcion },
       {
         encabezado: 'Tipo',
         valor: (compra) => tipoDeCompra(compra.tipoTicketId, tipos)?.nombre ?? null,

@@ -101,7 +101,7 @@ despliega un menú con dos formatos:
   para importarlo en otro sistema.
 
 El archivo trae una fila por compra con el número, la fecha de solicitud, el
-motivo, el estado, si está comprada y si está cerrada, y una columna de total por
+motivo, la descripción completa, el tipo, el estado, si está comprada y si está cerrada, y una columna de total por
 cada moneda que aparezca en las compras exportadas. La celda de una moneda queda
 vacía cuando la compra no tiene importes en ella.
 
