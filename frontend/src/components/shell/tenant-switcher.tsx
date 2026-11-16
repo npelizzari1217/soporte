@@ -19,6 +19,10 @@
  *   3. `router.refresh()` re-runs the Server Component tree (DashboardLayout),
  *      which re-decodes the now-updated `at` cookie and hydrates a fresh
  *      SessionProvider — no client-side state duplication of the session.
+ *   4. En una pantalla de detalle (`/<seccion>/<uuid>`) se reemplaza la ruta por el listado de la
+ *      seccion: casi todos los ids pertenecen a la base del cliente anterior y en el nuevo
+ *      responden 404, que "Reintentar" nunca resuelve. Ayuda (`/kb`) es global y tambien vuelve
+ *      al listado: un solo criterio para todas las secciones.
  *
  * Spec: [R28] Switcher en el shell; sdd/root-access-fix (ROOT sin membresías).
  */
@@ -26,13 +30,29 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Building2, ChevronDown } from "lucide-react";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiFetch } from "@/shared/api/client";
 import { useSession } from "@/shared/hooks/use-session";
 import { useClientes } from "@/features/clientes/hooks/use-clientes";
 import type { JwtPayload } from "@/shared/api/types";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Ruta a la que hay que ir después de cambiar de cliente.
+ *
+ * @param pathname Ruta actual.
+ * @returns El listado de la sección si la ruta lleva un id, o `null` si la pantalla sirve igual
+ *   en el cliente nuevo.
+ */
+export function rutaTrasCambioDeCliente(pathname: string): string | null {
+  const segmentos = pathname.split("/").filter(Boolean);
+  const indiceId = segmentos.findIndex((segmento) => UUID.test(segmento));
+  if (indiceId === -1) return null;
+  return `/${segmentos.slice(0, indiceId).join("/")}`;
+}
 
 /** Normalized switch option — either a `membresia` (non-root) or a `Cliente` (root). */
 interface SwitchOption {
@@ -44,6 +64,7 @@ interface SwitchOption {
 export function TenantSwitcher() {
   const { user, isGlobalAdmin, setUser } = useSession();
   const router = useRouter();
+  const pathname = usePathname();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const clientesQuery = useClientes(isGlobalAdmin);
@@ -61,6 +82,8 @@ export function TenantSwitcher() {
       setUser(result.user);
       queryClient.invalidateQueries();
       setOpen(false);
+      const destino = rutaTrasCambioDeCliente(pathname);
+      if (destino !== null) router.replace(destino);
       router.refresh();
     },
     onError: () => {

@@ -12,7 +12,8 @@ import type { JwtPayload } from "@/shared/api/types";
 
 const pushMock = vi.fn();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock, refresh: vi.fn() }),
+  useRouter: () => ({ push: pushMock, refresh: vi.fn(), replace: vi.fn() }),
+  usePathname: () => "/",
 }));
 
 const PAYLOAD: JwtPayload = {

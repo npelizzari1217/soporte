@@ -1,10 +1,11 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { server } from "../../../test/msw/server";
-import { TenantSwitcher } from "./tenant-switcher";
+import { TenantSwitcher, rutaTrasCambioDeCliente } from "./tenant-switcher";
 import { SessionProvider } from "@/shared/providers/session-provider";
 import type { JwtPayload } from "@/shared/api/types";
 
@@ -12,8 +13,11 @@ import type { JwtPayload } from "@/shared/api/types";
 // selecciona → POST /api/auth/switch → actualiza sesión sin reload.
 
 const refreshMock = vi.fn();
+const replaceMock = vi.fn();
+let pathnameActual = "/tickets";
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: refreshMock }),
+  useRouter: () => ({ refresh: refreshMock, replace: replaceMock }),
+  usePathname: () => pathnameActual,
 }));
 
 const PAYLOAD: JwtPayload = {
@@ -46,6 +50,8 @@ function renderSwitcher(user: JwtPayload | null = PAYLOAD) {
 describe("TenantSwitcher", () => {
   beforeEach(() => {
     refreshMock.mockClear();
+    replaceMock.mockClear();
+    pathnameActual = "/tickets";
   });
 
   it("no user → renders nothing", () => {
@@ -126,6 +132,103 @@ describe("TenantSwitcher", () => {
       "aria-disabled",
       "true",
     );
+  });
+});
+
+// Un id de detalle pertenece a la base del cliente anterior: en el cliente nuevo no existe y la
+// pantalla quedaba en un 404 que "Reintentar" nunca resuelve.
+describe("TenantSwitcher — cambio de cliente desde una pantalla de detalle", () => {
+  const TICKET_ID = "01a1b0f2-7959-74a9-ab43-18a0ebde4de0";
+
+  beforeEach(() => {
+    refreshMock.mockClear();
+    replaceMock.mockClear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function cambiarAClienteDos(): Promise<void> {
+    const user = userEvent.setup();
+    renderSwitcher();
+    await user.click(screen.getByRole("button", { name: /cliente uno/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /cliente dos/i }));
+  }
+
+  it("desde el detalle de un ticket lleva al listado de tickets", async () => {
+    pathnameActual = `/tickets/${TICKET_ID}`;
+    server.use(
+      http.post("/api/auth/switch", () =>
+        HttpResponse.json({ user: { ...PAYLOAD, cliente_id: "c2", cliente_nombre: "Cliente Dos" } }),
+      ),
+    );
+
+    await cambiarAClienteDos();
+
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/tickets"));
+    expect(replaceMock).toHaveBeenCalledTimes(1);
+    // El refresh tiene que llegar DESPUÉS de la navegación: al revés, re-renderiza el detalle
+    // con el cliente nuevo y vuelve a pedir el id ajeno.
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+    expect(replaceMock.mock.invocationCallOrder[0]).toBeLessThan(refreshMock.mock.invocationCallOrder[0]);
+  });
+
+  it("desde el detalle de cualquier otra sección lleva al listado de esa sección", async () => {
+    pathnameActual = `/compras/${TICKET_ID}`;
+    server.use(
+      http.post("/api/auth/switch", () =>
+        HttpResponse.json({ user: { ...PAYLOAD, cliente_id: "c2", cliente_nombre: "Cliente Dos" } }),
+      ),
+    );
+
+    await cambiarAClienteDos();
+
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/compras"));
+  });
+
+  it("en una pantalla sin id no navega: solo refresca", async () => {
+    pathnameActual = "/admin/usuarios";
+    server.use(
+      http.post("/api/auth/switch", () =>
+        HttpResponse.json({ user: { ...PAYLOAD, cliente_id: "c2", cliente_nombre: "Cliente Dos" } }),
+      ),
+    );
+
+    await cambiarAClienteDos();
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it("si el cambio falla, se queda en el detalle", async () => {
+    pathnameActual = `/tickets/${TICKET_ID}`;
+    server.use(http.post("/api/auth/switch", () => HttpResponse.json({ message: "x" }, { status: 403 })));
+
+    const toastError = vi.spyOn(toast, "error");
+
+    await cambiarAClienteDos();
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("No se pudo cambiar de cliente. Intente de nuevo."));
+    expect(replaceMock).not.toHaveBeenCalled();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("rutaTrasCambioDeCliente", () => {
+  const ID = "01A1B0F2-7959-74a9-ab43-18a0ebde4de0";
+
+  it.each([
+    [`/tickets/${ID}`, "/tickets"],
+    [`/tickets/${ID}/`, "/tickets"],
+    [`/repuestos/${ID}`, "/repuestos"],
+    ["/tickets", null],
+    ["/tickets/", null],
+    ["/insumos/reporte-stock", null],
+    ["/tickets/123", null],
+    ["/", null],
+  ])("%s → %s", (ruta, esperado) => {
+    expect(rutaTrasCambioDeCliente(ruta)).toBe(esperado);
   });
 });
 
