@@ -366,11 +366,64 @@ describe('ExportarComprasUseCase', () => {
         'Número',
         'Fecha de solicitud',
         'Motivo',
+        'Descripción',
         'Tipo',
-        'Estado',
       ]);
       expect(conTipo.split(';')[posicionTipo]).toBe('Soporte');
       expect(sinTipo.split(';')[posicionTipo]).toBe('');
+    });
+  });
+
+  describe('columna Descripción', () => {
+    async function exportarCsv(compras: CompraEntity[]): Promise<string> {
+      const { repo } = crearRepo(compras);
+      const result = await new ExportarComprasUseCase(repo, crearTipos()).execute({
+        alcance: SIN_RESTRICCION,
+      });
+      return result.getValue().contenido;
+    }
+
+    it('va después de Motivo y trae la descripción completa, escapada', async () => {
+      const descripcion = 'Línea uno; con "comillas"\nLínea dos ' + 'x'.repeat(2000);
+      const contenido = await exportarCsv([crearCompra('c1', [], { descripcion })]);
+
+      const [encabezado] = lineas(contenido);
+      const columnas = encabezado.split(';');
+      expect(columnas.indexOf('Descripción')).toBe(columnas.indexOf('Motivo') + 1);
+      expect(contenido).toContain(`"${descripcion.replace(/"/g, '""')}"`);
+    });
+
+    it('queda vacía cuando la compra no tiene descripción', async () => {
+      const [encabezado, fila] = lineas(
+        await exportarCsv([crearCompra('c1', [], { descripcion: null })]),
+      );
+
+      const posicion = encabezado.split(';').indexOf('Descripción');
+      expect(fila.split(';')[posicion]).toBe('');
+    });
+
+    it('neutraliza una descripción que empieza como fórmula', async () => {
+      const [encabezado, fila] = lineas(
+        await exportarCsv([crearCompra('c1', [], { descripcion: '=HYPERLINK("x")' })]),
+      );
+
+      const posicion = encabezado.split(';').indexOf('Descripción');
+      expect(fila.split(';')[posicion]).toBe(`"'=HYPERLINK(""x"")"`);
+    });
+
+    it('sale también en el xlsx con el texto completo', async () => {
+      const descripcion = 'Detalle\ncompleto ' + 'y'.repeat(1500);
+      const { repo } = crearRepo([crearCompra('c1', [], { descripcion })]);
+
+      const result = await new ExportarComprasUseCase(repo, crearTipos()).execute(
+        { alcance: SIN_RESTRICCION },
+        'xlsx',
+      );
+
+      const hoja = (await leerXlsx(result.getValue().contenido)).worksheets[0];
+      const encabezados = (hoja.getRow(1).values as unknown[]).slice(1);
+      const columna = encabezados.indexOf('Descripción') + 1;
+      expect(hoja.getRow(2).getCell(columna).value).toBe(descripcion);
     });
   });
 });
