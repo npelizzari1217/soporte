@@ -1,11 +1,11 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { server } from "../../../test/msw/server";
-import { TenantSwitcher } from "./tenant-switcher";
+import { TenantSwitcher, rutaTrasCambioDeCliente } from "./tenant-switcher";
 import { SessionProvider } from "@/shared/providers/session-provider";
 import type { JwtPayload } from "@/shared/api/types";
 
@@ -145,6 +145,10 @@ describe("TenantSwitcher — cambio de cliente desde una pantalla de detalle", (
     replaceMock.mockClear();
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   async function cambiarAClienteDos(): Promise<void> {
     const user = userEvent.setup();
     renderSwitcher();
@@ -164,6 +168,10 @@ describe("TenantSwitcher — cambio de cliente desde una pantalla de detalle", (
 
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/tickets"));
     expect(replaceMock).toHaveBeenCalledTimes(1);
+    // El refresh tiene que llegar DESPUÉS de la navegación: al revés, re-renderiza el detalle
+    // con el cliente nuevo y vuelve a pedir el id ajeno.
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+    expect(replaceMock.mock.invocationCallOrder[0]).toBeLessThan(refreshMock.mock.invocationCallOrder[0]);
   });
 
   it("desde el detalle de cualquier otra sección lleva al listado de esa sección", async () => {
@@ -204,6 +212,23 @@ describe("TenantSwitcher — cambio de cliente desde una pantalla de detalle", (
     await waitFor(() => expect(toastError).toHaveBeenCalledWith("No se pudo cambiar de cliente. Intente de nuevo."));
     expect(replaceMock).not.toHaveBeenCalled();
     expect(refreshMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("rutaTrasCambioDeCliente", () => {
+  const ID = "01A1B0F2-7959-74a9-ab43-18a0ebde4de0";
+
+  it.each([
+    [`/tickets/${ID}`, "/tickets"],
+    [`/tickets/${ID}/`, "/tickets"],
+    [`/repuestos/${ID}`, "/repuestos"],
+    ["/tickets", null],
+    ["/tickets/", null],
+    ["/insumos/reporte-stock", null],
+    ["/tickets/123", null],
+    ["/", null],
+  ])("%s → %s", (ruta, esperado) => {
+    expect(rutaTrasCambioDeCliente(ruta)).toBe(esperado);
   });
 });
 
