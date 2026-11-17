@@ -18,7 +18,7 @@
  */
 
 import ExcelJS from 'exceljs';
-import { ColumnaCsv, esCeldaTipada, ValorCelda } from '../csv/csv';
+import { ColumnaCsv, esCeldaTipada, SeccionExport, ValorCelda } from '../csv/csv';
 
 const NOMBRE_HOJA = 'Datos';
 const FORMATO_FECHA = 'dd/mm/yyyy';
@@ -106,6 +106,51 @@ export async function serializarXlsx<T>(
       to: { row: 1, column: columnas.length },
     };
   }
+
+  return Buffer.from(await libro.xlsx.writeBuffer());
+}
+
+/**
+ * Serializa varias secciones a una sola hoja, separadas por una fila vacía.
+ * Cada sección lleva su encabezado en negrita. Sin autofiltro ni fila
+ * congelada: con más de una tabla en la hoja, no hay una única fila de
+ * encabezado que fijar.
+ *
+ * @param secciones Secciones en el orden en que deben salir.
+ * @returns El archivo xlsx.
+ */
+export async function serializarXlsxSecciones(
+  secciones: readonly SeccionExport[],
+): Promise<Buffer> {
+  const libro = new ExcelJS.Workbook();
+  const hoja = libro.addWorksheet(NOMBRE_HOJA);
+  const anchos: number[] = [];
+  const medir = (indice: number, largo: number): void => {
+    anchos[indice] = Math.max(anchos[indice] ?? 0, largo);
+  };
+
+  secciones.forEach((seccion, posicion) => {
+    if (posicion > 0) {
+      hoja.addRow([]);
+    }
+    hoja.addRow([...seccion.encabezados]).font = { bold: true };
+    seccion.encabezados.forEach((encabezado, indice) => medir(indice, encabezado.length));
+
+    for (const fila of seccion.filas) {
+      const resueltas = fila.map(resolver);
+      const filaHoja = hoja.addRow(resueltas.map((celda) => celda.valor));
+      resueltas.forEach((celda, indice) => {
+        if (celda.formato !== undefined) {
+          filaHoja.getCell(indice + 1).numFmt = celda.formato;
+        }
+        medir(indice, celda.largo);
+      });
+    }
+  });
+
+  anchos.forEach((ancho, indice) => {
+    hoja.getColumn(indice + 1).width = Math.min(ANCHO_MAXIMO, Math.max(ANCHO_MINIMO, ancho + 2));
+  });
 
   return Buffer.from(await libro.xlsx.writeBuffer());
 }

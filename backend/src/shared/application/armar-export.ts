@@ -1,5 +1,6 @@
 import { DomainError, Result } from '../domain/result';
-import { serializarXlsx } from '../infrastructure/xlsx/xlsx';
+import { serializarXlsx, serializarXlsxSecciones } from '../infrastructure/xlsx/xlsx';
+import { SeccionExport, serializarCsvSecciones } from '../infrastructure/csv/csv';
 import { ArmarExportCsvInput, armarExportCsv, nombreArchivoExport } from './armar-export-csv';
 
 /** Formatos de salida de una exportación de listado. */
@@ -73,4 +74,40 @@ async function armarSegunFormato<T>(
     contenido: await serializarXlsx(input.filas, input.columnas),
     nombreArchivo: nombreArchivoExport(input.prefijo, 'xlsx', input.ahora),
   });
+}
+
+/** Entrada de `armarExportSecciones`. */
+export interface ArmarExportSeccionesInput<F extends FormatoExport | undefined = undefined> {
+  /** Secciones del archivo, en el orden en que deben salir. */
+  secciones: readonly SeccionExport[];
+  /** Prefijo del nombre de archivo. */
+  prefijo: string;
+  /** Formato de salida; por defecto `csv`. */
+  formato?: F;
+  /** Momento de la exportación, para el sufijo de fecha del nombre. Por defecto, ahora. */
+  ahora?: Date;
+}
+
+/**
+ * Arma un archivo con varias tablas una debajo de otra, separadas por una fila
+ * vacía. Sin tope de filas: lo usan exportaciones de un solo registro.
+ *
+ * @param input Secciones, prefijo, formato y fecha.
+ * @returns El archivo listo para entregar.
+ */
+export async function armarExportSecciones<F extends FormatoExport | undefined = undefined>(
+  input: ArmarExportSeccionesInput<F>,
+): Promise<ArchivoExportDe<F>> {
+  const archivo: ArchivoExport =
+    input.formato === 'xlsx'
+      ? {
+          contenido: await serializarXlsxSecciones(input.secciones),
+          nombreArchivo: nombreArchivoExport(input.prefijo, 'xlsx', input.ahora),
+        }
+      : {
+          contenido: serializarCsvSecciones(input.secciones),
+          nombreArchivo: nombreArchivoExport(input.prefijo, 'csv', input.ahora),
+        };
+  // Mismo motivo que en `armarExport`: el tipo depende del formato pedido.
+  return archivo as ArchivoExportDe<F>;
 }

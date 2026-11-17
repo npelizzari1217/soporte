@@ -1,6 +1,6 @@
 import {
   ArchivoExportDe,
-  armarExport,
+  armarExportSecciones,
   FormatoExport,
 } from '../../../shared/application/armar-export';
 import { DomainError, Result } from '../../../shared/domain/result';
@@ -9,7 +9,7 @@ import {
   ColumnaCsv,
   fechaCelda,
   montoCelda,
-  ValorCelda,
+  seccionExport,
 } from '../../../shared/infrastructure/csv/csv';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
@@ -32,12 +32,9 @@ export interface ExportarCompraDto {
 }
 
 /**
- * ExportarCompraUseCase — exporta UNA compra a CSV o xlsx, con una fila por
- * ítem no eliminado (odd/tasks/export-compra-individual.md, S1-S5).
- *
- * Una fila por ítem, y no una cabecera arriba con los ítems abajo: con los
- * datos de la compra repetidos en cada fila el archivo se puede filtrar y
- * sumar en la planilla sin celdas combinadas, igual que el del listado.
+ * ExportarCompraUseCase — exporta UNA compra a CSV o xlsx: arriba la
+ * cabecera (fila de títulos y fila de valores), una fila vacía, y abajo los
+ * ítems no eliminados (odd/tasks/compra-export-secciones-y-pdf.md, S1-S3).
  *
  * La visibilidad por tipo la decide `VisibilidadCompraGuard` en la ruta
  * antes de llegar acá; este caso de uso solo resuelve existencia.
@@ -64,57 +61,47 @@ export class ExportarCompraUseCase {
 
     const tipos = await this.tipos.resolver([compra.tipoTicketId]);
     const nombreTipo = tipoDeCompra(compra.tipoTicketId, tipos)?.nombre ?? null;
-    const vivos = compra.items.filter((item) => !item.isDeleted());
-    // Sin ítems vivos sale igual una fila con la cabecera y las columnas de
-    // ítem vacías: un archivo con solo el encabezado no diría de qué compra es.
-    const filas: readonly (ItemCompraEntity | null)[] = vivos.length > 0 ? vivos : [null];
+    const items = compra.items.filter((item) => !item.isDeleted());
 
-    return armarExport({
-      filas,
-      total: filas.length,
-      // Una compra no tiene un volumen de ítems que justifique un tope propio.
-      tope: Number.POSITIVE_INFINITY,
-      columnas: ExportarCompraUseCase.columnas(compra, nombreTipo),
-      prefijo: `compra-${compra.numero}`,
-      formato,
-      // Inalcanzable con tope infinito; `armarExport` exige el callback.
-      alExceder: () => new CompraNoEncontradaError(dto.compraId),
-    });
+    return Result.ok(
+      await armarExportSecciones({
+        secciones: [
+          seccionExport([compra], ExportarCompraUseCase.columnasCompra(nombreTipo)),
+          seccionExport(items, COLUMNAS_ITEM),
+        ],
+        prefijo: `compra-${compra.numero}`,
+        formato,
+      }),
+    );
   }
 
-  private static columnas(
-    compra: CompraEntity,
-    nombreTipo: string | null,
-  ): readonly ColumnaCsv<ItemCompraEntity | null>[] {
-    /** Columna de ítem: vacía en la fila de una compra sin ítems. */
-    const deItem = (
-      encabezado: string,
-      valor: (item: ItemCompraEntity) => ValorCelda,
-    ): ColumnaCsv<ItemCompraEntity | null> => ({
-      encabezado,
-      valor: (item) => (item === null ? null : valor(item)),
-    });
-
+  /** Cabecera: una fila de títulos y una de valores (odd/tasks/compra-export-secciones-y-pdf.md, S1). */
+  private static columnasCompra(nombreTipo: string | null): readonly ColumnaCsv<CompraEntity>[] {
     return [
-      { encabezado: 'Número', valor: () => compra.numero },
-      { encabezado: 'Motivo', valor: () => compra.motivo },
-      { encabezado: 'Descripción de la compra', valor: () => compra.descripcion },
+      { encabezado: 'Número', valor: (compra) => compra.numero },
+      { encabezado: 'Fecha de solicitud', valor: (compra) => fechaCelda(compra.fechaSolicitud) },
+      { encabezado: 'Motivo', valor: (compra) => compra.motivo },
+      { encabezado: 'Descripción', valor: (compra) => compra.descripcion },
       { encabezado: 'Tipo', valor: () => nombreTipo },
-      { encabezado: 'Estado de la compra', valor: () => ETIQUETA_ESTADO[compra.estado] },
-      deItem('Descripción del ítem', (item) => item.descripcion),
-      deItem('Cantidad', (item) => cantidadCsv(item.cantidad, true)),
-      deItem('Proveedor', (item) => item.proveedor),
-      deItem('Moneda', (item) => item.moneda),
-      deItem('Monto', (item) => montoCelda(item.monto)),
-      deItem('Total', (item) => montoCelda(item.totalItem)),
-      deItem('Fecha de cotización', (item) => fechaCelda(item.fechaCotizacion)),
-      deItem('Aprobación', (item) => ETIQUETA_APROBACION[item.estadoAprobacion]),
-      deItem('Fecha de orden', (item) => fechaCelda(item.fechaOrden)),
-      deItem('Fecha de recepción', (item) => fechaCelda(item.fechaRecepcion)),
-      deItem('Fecha de entrega', (item) => fechaCelda(item.fechaEntrega)),
-      deItem('Comprado', (item) => (item.comprado ? 'Sí' : 'No')),
-      deItem('Entregado', (item) => (item.entregado ? 'Sí' : 'No')),
-      deItem('Observaciones', (item) => item.observaciones),
+      { encabezado: 'Estado', valor: (compra) => ETIQUETA_ESTADO[compra.estado] },
     ];
   }
 }
+
+/** Columnas de los ítems; ya no repiten los datos de la compra (S2). */
+const COLUMNAS_ITEM: readonly ColumnaCsv<ItemCompraEntity>[] = [
+  { encabezado: 'Descripción del ítem', valor: (item) => item.descripcion },
+  { encabezado: 'Cantidad', valor: (item) => cantidadCsv(item.cantidad, true) },
+  { encabezado: 'Proveedor', valor: (item) => item.proveedor },
+  { encabezado: 'Moneda', valor: (item) => item.moneda },
+  { encabezado: 'Monto', valor: (item) => montoCelda(item.monto) },
+  { encabezado: 'Total', valor: (item) => montoCelda(item.totalItem) },
+  { encabezado: 'Fecha de cotización', valor: (item) => fechaCelda(item.fechaCotizacion) },
+  { encabezado: 'Aprobación', valor: (item) => ETIQUETA_APROBACION[item.estadoAprobacion] },
+  { encabezado: 'Fecha de orden', valor: (item) => fechaCelda(item.fechaOrden) },
+  { encabezado: 'Fecha de recepción', valor: (item) => fechaCelda(item.fechaRecepcion) },
+  { encabezado: 'Fecha de entrega', valor: (item) => fechaCelda(item.fechaEntrega) },
+  { encabezado: 'Comprado', valor: (item) => (item.comprado ? 'Sí' : 'No') },
+  { encabezado: 'Entregado', valor: (item) => (item.entregado ? 'Sí' : 'No') },
+  { encabezado: 'Observaciones', valor: (item) => item.observaciones },
+];

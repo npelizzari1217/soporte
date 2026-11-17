@@ -1816,7 +1816,9 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
       expect(visibleExport.headers.get('Content-Disposition')).toContain(
         `compra-${deSoporte.numero}-`,
       );
-      expect((await visibleExport.text()).split('\r\n')[0]).toContain('Descripción del ítem');
+      const lineasExport = (await visibleExport.text()).split('\r\n');
+      expect(lineasExport[1]).toContain(deSoporte.numero);
+      expect(lineasExport[3]).toContain('Descripción del ítem');
       expect(visible.status).toBe(200);
       expect(visible.data.tipoTicket).toEqual({ id: tipoSoporteId, nombre: 'Soporte E2E' });
     });
