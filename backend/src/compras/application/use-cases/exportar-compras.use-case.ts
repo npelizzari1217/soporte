@@ -13,6 +13,7 @@ import { CompraListFiltros, ICompraRepository } from '../../domain/ports/i-compr
 import { EstadoCompra, FiltroGrupoEstadoCompra } from '../../domain/services/estado-compra';
 import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
 import { tiposVisiblesDeCompras } from '../services/visibilidad-compra';
+import { ResolverNombresSolicitantes } from '../services/nombres-de-solicitantes';
 import {
   ResolverTiposDeCompra,
   TipoTicketDeCompra,
@@ -104,6 +105,7 @@ export class ExportarComprasUseCase {
   constructor(
     private readonly compraRepo: Pick<ICompraRepository, 'findPaginaConItems'>,
     private readonly tipos: Pick<ResolverTiposDeCompra, 'resolver'>,
+    private readonly solicitantes: Pick<ResolverNombresSolicitantes, 'resolver'>,
   ) {}
 
   async execute<F extends FormatoExport | undefined = undefined>(
@@ -123,13 +125,16 @@ export class ExportarComprasUseCase {
     };
 
     const { compras, total } = await this.compraRepo.findPaginaConItems(filtros);
-    const tipos = await this.tipos.resolver(compras.map((compra) => compra.tipoTicketId));
+    const [tipos, nombres] = await Promise.all([
+      this.tipos.resolver(compras.map((compra) => compra.tipoTicketId)),
+      this.solicitantes.resolver(compras.map((compra) => compra.solicitanteId)),
+    ]);
 
     return armarExport({
       filas: compras,
       total,
       tope: TOPE_FILAS_EXPORT,
-      columnas: ExportarComprasUseCase.columnas(compras, tipos),
+      columnas: ExportarComprasUseCase.columnas(compras, tipos, nombres),
       prefijo: 'compras',
       formato,
       alExceder: (total, tope) => new ExportacionDemasiadoGrandeError(total, tope),
@@ -151,12 +156,17 @@ export class ExportarComprasUseCase {
   private static columnas(
     compras: readonly CompraEntity[],
     tipos: ReadonlyMap<string, TipoTicketDeCompra>,
+    nombres: ReadonlyMap<string, string>,
   ): readonly ColumnaCsv<CompraEntity>[] {
     return [
       { encabezado: 'Número', valor: (compra) => compra.numero },
       { encabezado: 'Fecha de solicitud', valor: (compra) => fechaCelda(compra.fechaSolicitud) },
       { encabezado: 'Motivo', valor: (compra) => compra.motivo },
       { encabezado: 'Descripción', valor: (compra) => compra.descripcion },
+      {
+        encabezado: 'Solicitante',
+        valor: (compra) => nombres.get(compra.solicitanteId) ?? null,
+      },
       {
         encabezado: 'Tipo',
         valor: (compra) => tipoDeCompra(compra.tipoTicketId, tipos)?.nombre ?? null,
