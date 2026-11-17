@@ -661,6 +661,8 @@ export interface CompraListItemResponseDto {
   totalesPorMoneda: Record<string, number>;
   /** Tipo de ticket (odd/compras-por-tipo, L3). `null` = compra sin tipo (S4). */
   tipoTicket: TipoTicketDeCompra | null;
+  /** "Nombre Apellido" de quien pidió la compra; `null` si el usuario no se encuentra. */
+  solicitanteNombre: string | null;
 }
 
 /** Convierte una fila de `ListarComprasUseCase` al shape de respuesta HTTP. */
@@ -675,6 +677,7 @@ export function toCompraListItemResponseDto(item: CompraListItemDto): CompraList
     cerrado: item.cerrado,
     totalesPorMoneda: item.totalesPorMoneda,
     tipoTicket: item.tipoTicket,
+    solicitanteNombre: item.solicitanteNombre,
   };
 }
 
@@ -706,6 +709,8 @@ export interface CompraDetalleResponseDto {
   motivo: string;
   descripcion: string | null;
   solicitanteId: string;
+  /** "Nombre Apellido" de quien pidió la compra; `null` si el usuario no se encuentra. */
+  solicitanteNombre: string | null;
   cicloId: string;
   /** Sector de destino (WU-09, R11). `null` si no se asignó (S66/S67). */
   sectorId: string | null;
@@ -740,6 +745,7 @@ export function toCompraDetalleResponseDto(
   compra: CompraEntity,
   tipoTicket: TipoTicketDeCompra | null,
   seguimientoPorInsumo: ReadonlyMap<string, SeguimientoInsumo> = new Map(),
+  solicitanteNombre: string | null = null,
 ): CompraDetalleResponseDto {
   return {
     id: compra.id,
@@ -748,6 +754,7 @@ export function toCompraDetalleResponseDto(
     motivo: compra.motivo,
     descripcion: compra.descripcion,
     solicitanteId: compra.solicitanteId,
+    solicitanteNombre,
     cicloId: compra.cicloId,
     sectorId: compra.sectorId,
     tipoTicket,

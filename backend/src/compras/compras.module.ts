@@ -30,6 +30,7 @@ import { NumeradorCompra } from './domain/services/numerador-compra';
 import { RegistrarOperacionCompra } from './application/services/registrar-operacion-compra';
 import { ResolverCicloActivoCompra } from './application/services/resolver-ciclo-activo-compra.service';
 import { ResolverTiposDeCompra } from './application/services/tipos-de-compra';
+import { ResolverNombresSolicitantes } from './application/services/nombres-de-solicitantes';
 
 import { CrearCompraUseCase } from './application/use-cases/crear-compra.use-case';
 import { AgregarItemCompraUseCase } from './application/use-cases/agregar-item-compra.use-case';
@@ -145,6 +146,12 @@ import { ComprasController } from './interface/controllers/compras.controller';
       provide: ResolverTiposDeCompra,
       useFactory: (tipoRepo: ITipoTicketRepository) => new ResolverTiposDeCompra(tipoRepo),
       inject: [TIPO_TICKET_REPOSITORY],
+    },
+    {
+      provide: ResolverNombresSolicitantes,
+      useFactory: (usuarioMasterChecker: IUsuarioMasterChecker) =>
+        new ResolverNombresSolicitantes(usuarioMasterChecker),
+      inject: [USUARIO_MASTER_CHECKER],
     },
     {
       provide: RegistrarOperacionCompra,
@@ -337,9 +344,12 @@ import { ComprasController } from './interface/controllers/compras.controller';
     // ─── Consultas — SIN TENANT_TX_RUNNER, SIN bitácora (§4.9/§4.10, deliberado) ───
     {
       provide: ListarComprasUseCase,
-      useFactory: (compraRepo: ICompraRepository, tipos: ResolverTiposDeCompra) =>
-        new ListarComprasUseCase(compraRepo, tipos),
-      inject: [COMPRA_REPOSITORY, ResolverTiposDeCompra],
+      useFactory: (
+        compraRepo: ICompraRepository,
+        tipos: ResolverTiposDeCompra,
+        solicitantes: ResolverNombresSolicitantes,
+      ) => new ListarComprasUseCase(compraRepo, tipos, solicitantes),
+      inject: [COMPRA_REPOSITORY, ResolverTiposDeCompra, ResolverNombresSolicitantes],
     },
     {
       provide: ObtenerCompraUseCase,
@@ -365,21 +375,14 @@ import { ComprasController } from './interface/controllers/compras.controller';
       useFactory: (
         compraRepo: ICompraRepository,
         tipos: ResolverTiposDeCompra,
-        usuarioMasterChecker: IUsuarioMasterChecker,
+        solicitantes: ResolverNombresSolicitantes,
         verLogoCliente: VerLogoClienteUseCase,
         generador: IGeneradorPdfCompra,
-      ) =>
-        new GenerarPdfCompraUseCase(
-          compraRepo,
-          tipos,
-          usuarioMasterChecker,
-          verLogoCliente,
-          generador,
-        ),
+      ) => new GenerarPdfCompraUseCase(compraRepo, tipos, solicitantes, verLogoCliente, generador),
       inject: [
         COMPRA_REPOSITORY,
         ResolverTiposDeCompra,
-        USUARIO_MASTER_CHECKER,
+        ResolverNombresSolicitantes,
         VerLogoClienteUseCase,
         GENERADOR_PDF_COMPRA,
       ],

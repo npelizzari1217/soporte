@@ -109,6 +109,7 @@ import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { SeguimientoInsumo } from '../../../insumos/domain/entities/unidad-insumo.entity';
 import { ResolverTiposDeCompra, tipoDeCompra } from '../../application/services/tipos-de-compra';
+import { ResolverNombresSolicitantes } from '../../application/services/nombres-de-solicitantes';
 import { VisibilidadCompraGuard } from '../guards/visibilidad-compra.guard';
 
 import { CrearCompraUseCase } from '../../application/use-cases/crear-compra.use-case';
@@ -332,6 +333,7 @@ export class ComprasController {
     private readonly generarPdfCompraUseCase: GenerarPdfCompraUseCase,
     private readonly alcances: CargadorAlcanceTicket,
     private readonly tiposDeCompra: ResolverTiposDeCompra,
+    private readonly solicitantes: ResolverNombresSolicitantes,
   ) {}
 
   /** Detalle de una compra con el nombre de su tipo resuelto (odd/compras-por-tipo, L3). */
@@ -339,11 +341,15 @@ export class ComprasController {
     compra: CompraEntity,
     seguimientoPorInsumo?: ReadonlyMap<string, SeguimientoInsumo>,
   ): Promise<CompraDetalleResponseDto> {
-    const tipos = await this.tiposDeCompra.resolver([compra.tipoTicketId]);
+    const [tipos, nombres] = await Promise.all([
+      this.tiposDeCompra.resolver([compra.tipoTicketId]),
+      this.solicitantes.resolver([compra.solicitanteId]),
+    ]);
     return toCompraDetalleResponseDto(
       compra,
       tipoDeCompra(compra.tipoTicketId, tipos),
       seguimientoPorInsumo,
+      nombres.get(compra.solicitanteId) ?? null,
     );
   }
 

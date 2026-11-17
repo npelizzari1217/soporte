@@ -1,7 +1,6 @@
 import { VerLogoClienteUseCase } from '../../../clientes/application/use-cases/ver-logo-cliente.use-case';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { fechaCsv, fechaHoraCsv } from '../../../shared/infrastructure/csv/csv';
-import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
 import { logoParaPdf } from '../../../ticket-pdf/application/services/logo-pdf';
 import { CompraPdfVista, ItemCompraPdf } from '../../domain/compra-pdf-vista';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
@@ -10,6 +9,7 @@ import { IGeneradorPdfCompra } from '../../domain/ports/i-generador-pdf-compra';
 import { ICompraRepository } from '../../domain/ports/i-compra.repository';
 import { EstadoAprobacionItem } from '../../domain/services/estado-compra';
 import { ResolverTiposDeCompra, tipoDeCompra } from '../services/tipos-de-compra';
+import { ResolverNombresSolicitantes } from '../services/nombres-de-solicitantes';
 import { ETIQUETA_ESTADO } from './exportar-compras.use-case';
 
 /** DTO de entrada de `GenerarPdfCompraUseCase`. */
@@ -56,7 +56,7 @@ export class GenerarPdfCompraUseCase {
   constructor(
     private readonly compraRepo: Pick<ICompraRepository, 'findByIdConItems'>,
     private readonly tipos: Pick<ResolverTiposDeCompra, 'resolver'>,
-    private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'resolverNombres'>,
+    private readonly solicitantes: Pick<ResolverNombresSolicitantes, 'resolver'>,
     private readonly verLogoCliente: Pick<VerLogoClienteUseCase, 'execute'>,
     private readonly generador: IGeneradorPdfCompra,
     private readonly ahora: () => Date = () => new Date(),
@@ -74,10 +74,9 @@ export class GenerarPdfCompraUseCase {
 
     const [tipos, nombres, logo] = await Promise.all([
       this.tipos.resolver([compra.tipoTicketId]),
-      this.usuarioMasterChecker.resolverNombres([compra.solicitanteId]),
+      this.solicitantes.resolver([compra.solicitanteId]),
       logoParaPdf(this.verLogoCliente, dto.clienteId),
     ]);
-    const solicitante = nombres.get(compra.solicitanteId);
 
     const vista: CompraPdfVista = {
       cliente: { nombre: dto.clienteNombre, logo },
@@ -87,7 +86,7 @@ export class GenerarPdfCompraUseCase {
       motivo: compra.motivo,
       descripcion: compra.descripcion?.trim() ? compra.descripcion : null,
       tipo: tipoDeCompra(compra.tipoTicketId, tipos)?.nombre ?? null,
-      solicitante: solicitante ? `${solicitante.nombre} ${solicitante.apellido}`.trim() : 'Usuario',
+      solicitante: nombres.get(compra.solicitanteId) ?? 'Usuario',
       items: compra.items.filter((item) => !item.isDeleted()).map(aItemPdf),
       totales: Object.entries(compra.totalesPorMoneda)
         .sort(([a], [b]) => a.localeCompare(b))

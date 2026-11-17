@@ -60,10 +60,7 @@ function armar(compra: CompraEntity | null) {
         .fn<ResolverTiposDeCompra['resolver']>()
         .mockResolvedValue(new Map([['tipo-soporte', { id: 'tipo-soporte', nombre: 'Soporte' }]])),
     },
-    {
-      resolverNombres: async () =>
-        new Map([['solicitante-1', { nombre: 'Ana', apellido: 'Pérez' }]]),
-    },
+    { resolver: async () => new Map([['solicitante-1', 'Ana Pérez']]) },
     { execute: async () => Result.fail(new LogoClienteNoEncontradoError('cliente-1')) },
     {
       generar: async (vista) => {

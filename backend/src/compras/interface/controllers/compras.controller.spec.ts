@@ -111,6 +111,7 @@ import { GenerarPdfCompraUseCase } from '../../application/use-cases/generar-pdf
 import { espiado } from '../../../shared/test-helpers/espiado';
 import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
 import { ResolverTiposDeCompra } from '../../application/services/tipos-de-compra';
+import { ResolverNombresSolicitantes } from '../../application/services/nombres-de-solicitantes';
 import { TipoTicketEntity } from '../../../tickets/domain/entities/tipo-ticket.entity';
 import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
 import { IPermisoTipoTicketRepository } from '../../../tickets/domain/ports/i-permiso-tipo-ticket.repository';
@@ -170,6 +171,15 @@ function buildController() {
         : null,
   };
   const tiposDeCompra = new ResolverTiposDeCompra(tipoRepo);
+  // Nombres de la base master: solo el usuario del JWT tiene nombre conocido.
+  const solicitantes = new ResolverNombresSolicitantes({
+    resolverNombres: async (ids) =>
+      new Map(
+        ids
+          .filter((id) => id === USUARIO.sub)
+          .map((id) => [id, { nombre: 'Ana', apellido: 'Gómez' }] as const),
+      ),
+  });
 
   const controller = new ComprasController(
     crearCompraUseCase.caso,
@@ -193,6 +203,7 @@ function buildController() {
     generarPdfCompraUseCase.caso,
     alcances,
     tiposDeCompra,
+    solicitantes,
   );
 
   return {
@@ -722,6 +733,7 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
               cerrado: false,
               totalesPorMoneda: { ARS: 2000 },
               tipoTicket: { id: TIPO_SOPORTE, nombre: 'Soporte' },
+              solicitanteNombre: 'Ana Gómez',
             },
           ],
           total: 1,
@@ -736,6 +748,7 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         expect.objectContaining({ pagina: 1, porPagina: 20, alcance: SIN_RESTRICCION }),
       );
       expect(res.items[0].tipoTicket).toEqual({ id: TIPO_SOPORTE, nombre: 'Soporte' });
+      expect(res.items[0].solicitanteNombre).toBe('Ana Gómez');
       expect(res.total).toBe(1);
       expect(res.items).toHaveLength(1);
       expect(res.items[0]).not.toHaveProperty('items');
@@ -1017,6 +1030,8 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
       expect(obtenerCompraUseCase.execute).toHaveBeenCalledWith({ compraId: 'compra-1' });
       expect(res.id).toBe('compra-1');
       expect(res.items).toHaveLength(1);
+      // S9: el detalle trae el nombre del solicitante, resuelto desde master.
+      expect(res.solicitanteNombre).toBe('Ana Gómez');
     });
 
     it('404 si la compra no existe/no es visible', async () => {

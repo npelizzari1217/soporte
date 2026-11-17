@@ -746,6 +746,16 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
       expect(detalleFinal.data.estado).toBe('APROBADO');
       expect(detalleFinal.data.comprado).toBe(true);
       expect(detalleFinal.data.cerrado).toBe(true);
+      // odd/tasks/compra-export-secciones-y-pdf.md, S9: el nombre sale de la base master real.
+      expect(detalleFinal.data.solicitanteNombre).toBe('E2E Compras');
+
+      const listado = await httpGet<ListarComprasResponseDto>(
+        `${baseUrl}/compras?estado=TODAS`,
+        bearer(actor.accessToken),
+      );
+      expect(listado.data.items.find((fila) => fila.id === compraId)?.solicitanteNombre).toBe(
+        'E2E Compras',
+      );
     });
 
     it('editar cabecera: PATCH /compras/:id sobre una compra PENDIENTE persiste los campos y deja UNA operación COMPRA_EDITADA en la bitácora; tras aprobar un ítem, el mismo PATCH da 422', async () => {

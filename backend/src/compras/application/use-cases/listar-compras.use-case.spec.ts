@@ -34,6 +34,7 @@ import { ICompraRepository } from '../../domain/ports/i-compra.repository';
 import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
 import { AccionTipoTicket } from '../../../tickets/domain/permisos-tipo-ticket';
 import { ResolverTiposDeCompra } from '../services/tipos-de-compra';
+import { ResolverNombresSolicitantes } from '../services/nombres-de-solicitantes';
 
 /** ADMINISTRADOR: sin restricción por tipo. Los tests anteriores al tipo corren con este alcance. */
 const SIN_RESTRICCION: AlcanceActorTicket = { actorId: 'admin-1', permisosPorTipo: null };
@@ -96,8 +97,13 @@ describe('ListarComprasUseCase', () => {
         .fn<ResolverTiposDeCompra['resolver']>()
         .mockResolvedValue(new Map([['tipo-soporte', { id: 'tipo-soporte', nombre: 'Soporte' }]])),
     };
-    const useCase = new ListarComprasUseCase(compraRepo, tipos);
-    return { useCase, compraRepo, tipos };
+    const solicitantes = {
+      resolver: vi
+        .fn<ResolverNombresSolicitantes['resolver']>()
+        .mockResolvedValue(new Map([['solicitante-1', 'Ana Pérez']])),
+    };
+    const useCase = new ListarComprasUseCase(compraRepo, tipos, solicitantes);
+    return { useCase, compraRepo, tipos, solicitantes };
   }
 
   it('S33: el DTO de cada fila expone estado/comprado/cerrado/totalesPorMoneda y NO expone items', async () => {
@@ -124,8 +130,27 @@ describe('ListarComprasUseCase', () => {
       cerrado: true,
       totalesPorMoneda: { ARS: 300000 },
       tipoTicket: null,
+      solicitanteNombre: 'Ana Pérez',
     });
     expect(fila).not.toHaveProperty('items');
+  });
+
+  it('S9: resuelve los nombres de los solicitantes de la página en una sola llamada; uno desconocido queda null', async () => {
+    const c = makeCollaborators();
+    const conocida = crearCompra(COMPRA_ID, []);
+    const desconocida = crearCompra('01900000-0000-7000-8000-0000000000c9', [], {
+      solicitanteId: 'borrado',
+    });
+    c.compraRepo.findPaginaConItems.mockResolvedValue({
+      compras: [conocida, desconocida],
+      total: 2,
+    });
+
+    const { items } = (await c.useCase.execute({ alcance: SIN_RESTRICCION })).getValue();
+
+    expect(items.map((fila) => fila.solicitanteNombre)).toEqual(['Ana Pérez', null]);
+    expect(c.solicitantes.resolver).toHaveBeenCalledTimes(1);
+    expect(c.solicitantes.resolver).toHaveBeenCalledWith(['solicitante-1', 'borrado']);
   });
 
   it('los valores derivados delegan en los getters de CompraEntity (derivarEstadoCompra) — sin re-derivar acá', async () => {
