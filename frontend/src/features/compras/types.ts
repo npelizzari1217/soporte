@@ -133,6 +133,8 @@ export interface CompraListItem {
   comprado: boolean;
   cerrado: boolean;
   totalesPorMoneda: Record<string, number>;
+  /** "Nombre Apellido" de quien pidió la compra; `null` si el usuario no se encuentra. */
+  solicitanteNombre: string | null;
 }
 
 /**
@@ -155,6 +157,8 @@ export interface CompraDetalle {
   motivo: string;
   descripcion: string | null;
   solicitanteId: string;
+  /** "Nombre Apellido" de quien pidió la compra; `null` si el usuario no se encuentra. */
+  solicitanteNombre: string | null;
   cicloId: string;
   /** Sector de destino de la cabecera (R11). `null` si no se asignó. */
   sectorId: string | null;

@@ -1,6 +1,7 @@
 /**
- * [UNIT] `ExportarCompraUseCase` — exportación de UNA compra, una fila por
- * ítem (odd/tasks/export-compra-individual.md, S1-S5).
+ * [UNIT] `ExportarCompraUseCase` — exportación de UNA compra: cabecera
+ * arriba, fila vacía, ítems abajo (odd/tasks/compra-export-secciones-y-pdf.md,
+ * S1-S3; ruta y nombre en odd/tasks/export-compra-individual.md, S4-S5).
  */
 import { leerXlsx } from '../../../testing/leer-xlsx';
 import { ExportarCompraUseCase } from './exportar-compra.use-case';
@@ -12,12 +13,9 @@ import { ResolverTiposDeCompra } from '../services/tipos-de-compra';
 
 const BOM = '\uFEFF';
 
-const COLUMNAS_ESPERADAS = [
-  'Número',
-  'Motivo',
-  'Descripción de la compra',
-  'Tipo',
-  'Estado de la compra',
+const COLUMNAS_COMPRA = ['Número', 'Fecha de solicitud', 'Motivo', 'Descripción', 'Tipo', 'Estado'];
+
+const COLUMNAS_ITEM = [
   'Descripción del ítem',
   'Cantidad',
   'Proveedor',
@@ -96,26 +94,31 @@ async function exportarCsv(compra: CompraEntity): Promise<string[]> {
 }
 
 describe('ExportarCompraUseCase', () => {
-  it('emite las columnas de la compra y del ítem, en orden, y una fila por ítem', async () => {
-    const [encabezado, ...filas] = await exportarCsv(
+  it('arriba la cabecera (títulos y valores), una línea vacía y después los ítems con su encabezado', async () => {
+    const lineasCsv = await exportarCsv(
       crearCompra([crearItem(), crearItem({ descripcion: 'Monitor' })]),
     );
 
-    expect(encabezado.split(';')).toEqual(COLUMNAS_ESPERADAS);
-    expect(filas.filter((fila) => fila !== '')).toHaveLength(2);
-  });
-
-  it('cada fila repite los datos de la compra y trae los del ítem', async () => {
-    const [, fila] = await exportarCsv(
-      crearCompra([crearItem({ observaciones: 'Entregar en dep\u00f3sito' })]),
-    );
-
-    expect(fila.split(';')).toEqual([
+    expect(lineasCsv[0].split(';')).toEqual(COLUMNAS_COMPRA);
+    expect(lineasCsv[1].split(';')).toEqual([
       'COM-2026-00007',
+      '19/08/2026',
       'Reposición de equipos',
       'Renovación del laboratorio',
       'Soporte',
       'Pendiente',
+    ]);
+    expect(lineasCsv[2]).toBe('');
+    expect(lineasCsv[3].split(';')).toEqual(COLUMNAS_ITEM);
+    expect(lineasCsv.slice(4)).toHaveLength(2);
+  });
+
+  it('las filas de ítem ya no repiten los datos de la compra', async () => {
+    const lineasCsv = await exportarCsv(
+      crearCompra([crearItem({ observaciones: 'Entregar en depósito' })]),
+    );
+
+    expect(lineasCsv[4].split(';')).toEqual([
       'Notebook',
       '2',
       'Proveedor SA',
@@ -129,12 +132,13 @@ describe('ExportarCompraUseCase', () => {
       '',
       'No',
       'No',
-      'Entregar en dep\u00f3sito',
+      'Entregar en depósito',
     ]);
+    expect(lineasCsv[4]).not.toContain('COM-2026-00007');
   });
 
   it('la descripción del ítem sale completa, con saltos de línea y separadores escapados', async () => {
-    const descripcion = 'Equipo; con \"comillas\"\nSegunda línea ' + 'z'.repeat(2000);
+    const descripcion = 'Equipo; con "comillas"\nSegunda línea ' + 'z'.repeat(2000);
     const contenido = (
       await new ExportarCompraUseCase(
         crearRepo(crearCompra([crearItem({ descripcion })])),
@@ -142,25 +146,46 @@ describe('ExportarCompraUseCase', () => {
       ).execute({ compraId: 'c1' })
     ).getValue().contenido;
 
-    expect(contenido).toContain(`\"${descripcion.replace(/\"/g, '\"\"')}\"`);
+    expect(contenido).toContain(`"${descripcion.replace(/"/g, '""')}"`);
   });
 
   it('no exporta los ítems eliminados', async () => {
     const eliminado = crearItem({ descripcion: 'Ítem borrado' });
     eliminado.softDelete();
 
-    const [, ...filas] = await exportarCsv(crearCompra([crearItem(), eliminado]));
+    const lineasCsv = await exportarCsv(crearCompra([crearItem(), eliminado]));
 
-    expect(filas.filter((fila) => fila !== '')).toHaveLength(1);
-    expect(filas.join('\n')).not.toContain('Ítem borrado');
+    expect(lineasCsv.slice(4)).toHaveLength(1);
+    expect(lineasCsv.join('\n')).not.toContain('Ítem borrado');
   });
 
-  it('una compra sin tipo deja la columna Tipo vacía', async () => {
-    const [encabezado, fila] = await exportarCsv(
-      crearCompra([crearItem()], { tipoTicketId: null }),
+  it('una compra sin ítems vivos trae la cabecera, la línea vacía y el encabezado de ítems sin filas', async () => {
+    const borrado = crearItem();
+    borrado.softDelete();
+
+    const lineasCsv = await exportarCsv(crearCompra([borrado]));
+
+    expect(lineasCsv).toHaveLength(4);
+    expect(lineasCsv[1]).toContain('COM-2026-00007');
+    expect(lineasCsv[3].split(';')).toEqual(COLUMNAS_ITEM);
+  });
+
+  it('una compra sin tipo deja vacía la celda Tipo de la cabecera', async () => {
+    const lineasCsv = await exportarCsv(crearCompra([crearItem()], { tipoTicketId: null }));
+
+    expect(lineasCsv[1].split(';')[COLUMNAS_COMPRA.indexOf('Tipo')]).toBe('');
+  });
+
+  it('neutraliza fórmulas en el texto libre de la compra y del ítem (CSV)', async () => {
+    const lineasCsv = await exportarCsv(
+      crearCompra(
+        [crearItem({ descripcion: '+cmd', proveedor: '@SUM(1)', observaciones: '-2+3' })],
+        { motivo: '=HYPERLINK("x")' },
+      ),
     );
 
-    expect(fila.split(';')[encabezado.split(';').indexOf('Tipo')]).toBe('');
+    expect(lineasCsv[1]).toContain(`"'=HYPERLINK(""x"")"`);
+    expect(lineasCsv[4].split(';')).toEqual(expect.arrayContaining(["'+cmd", "'@SUM(1)", "'-2+3"]));
   });
 
   it('el nombre del archivo lleva el número de la compra', async () => {
@@ -174,61 +199,23 @@ describe('ExportarCompraUseCase', () => {
     );
   });
 
-  it('en xlsx trae los mismos encabezados que el CSV y la descripción completa', async () => {
+  it('en xlsx: cabecera en filas 1 y 2, fila 3 vacía, ítems desde la 4, con la descripción completa', async () => {
     const descripcion = 'Detalle\nlargo ' + 'w'.repeat(1500);
     const result = await new ExportarCompraUseCase(
-      crearRepo(crearCompra([crearItem({ descripcion })])),
+      crearRepo(crearCompra([crearItem({ descripcion, observaciones: '=1+1' })])),
       crearTipos(),
     ).execute({ compraId: 'c1' }, 'xlsx');
 
     const hoja = (await leerXlsx(result.getValue().contenido)).worksheets[0];
-    const encabezados = (hoja.getRow(1).values as unknown[]).slice(1);
-    expect(encabezados).toEqual(COLUMNAS_ESPERADAS);
-    const columna = encabezados.indexOf('Descripción del ítem') + 1;
-    expect(hoja.getRow(2).getCell(columna).value).toBe(descripcion);
-  });
-
-  it('neutraliza fórmulas en el texto libre de la compra y del ítem (CSV)', async () => {
-    const [, fila] = await exportarCsv(
-      crearCompra(
-        [crearItem({ descripcion: '+cmd', proveedor: '@SUM(1)', observaciones: '-2+3' })],
-        { motivo: '=HYPERLINK("x")' },
-      ),
-    );
-
-    expect(fila).toContain(`"'=HYPERLINK(""x"")"`);
-    expect(fila.split(';')).toEqual(expect.arrayContaining(["'+cmd", "'@SUM(1)", "'-2+3"]));
-  });
-
-  it('en xlsx una observación con forma de fórmula queda como texto', async () => {
-    const result = await new ExportarCompraUseCase(
-      crearRepo(crearCompra([crearItem({ observaciones: '=1+1' })])),
-      crearTipos(),
-    ).execute({ compraId: 'c1' }, 'xlsx');
-
-    const celda = (await leerXlsx(result.getValue().contenido)).worksheets[0]
-      .getRow(2)
-      .getCell(COLUMNAS_ESPERADAS.length);
-    expect(celda.value).toBe('=1+1');
-    expect(celda.formula).toBeUndefined();
-  });
-
-  it('una compra sin ítems vivos exporta una fila con la cabecera y las columnas de ítem vacías', async () => {
-    const borrado = crearItem();
-    borrado.softDelete();
-
-    const [encabezado, fila, ...resto] = await exportarCsv(crearCompra([borrado]));
-
-    expect(encabezado.split(';')).toEqual(COLUMNAS_ESPERADAS);
-    expect(fila.split(';')).toEqual([
-      'COM-2026-00007',
-      'Reposición de equipos',
-      'Renovación del laboratorio',
-      'Soporte',
-      'Pendiente',
-      ...Array<string>(COLUMNAS_ESPERADAS.length - 5).fill(''),
-    ]);
-    expect(resto.filter((linea) => linea !== '')).toHaveLength(0);
+    const valores = (fila: number): unknown[] => (hoja.getRow(fila).values as unknown[]).slice(1);
+    expect(valores(1)).toEqual(COLUMNAS_COMPRA);
+    expect(valores(2)[0]).toBe('COM-2026-00007');
+    expect(valores(3)).toEqual([]);
+    expect(valores(4)).toEqual(COLUMNAS_ITEM);
+    expect(hoja.getRow(5).getCell(1).value).toBe(descripcion);
+    const observacion = hoja.getRow(5).getCell(COLUMNAS_ITEM.length);
+    expect(observacion.value).toBe('=1+1');
+    expect(observacion.formula).toBeUndefined();
   });
 
   it('compra inexistente → CompraNoEncontradaError', async () => {

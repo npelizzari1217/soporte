@@ -30,6 +30,7 @@ import { NumeradorCompra } from './domain/services/numerador-compra';
 import { RegistrarOperacionCompra } from './application/services/registrar-operacion-compra';
 import { ResolverCicloActivoCompra } from './application/services/resolver-ciclo-activo-compra.service';
 import { ResolverTiposDeCompra } from './application/services/tipos-de-compra';
+import { ResolverNombresSolicitantes } from './application/services/nombres-de-solicitantes';
 
 import { CrearCompraUseCase } from './application/use-cases/crear-compra.use-case';
 import { AgregarItemCompraUseCase } from './application/use-cases/agregar-item-compra.use-case';
@@ -47,6 +48,15 @@ import { CancelarCompraUseCase } from './application/use-cases/cancelar-compra.u
 import { ListarComprasUseCase } from './application/use-cases/listar-compras.use-case';
 import { ExportarComprasUseCase } from './application/use-cases/exportar-compras.use-case';
 import { ExportarCompraUseCase } from './application/use-cases/exportar-compra.use-case';
+import { GenerarPdfCompraUseCase } from './application/use-cases/generar-pdf-compra.use-case';
+import { GENERADOR_PDF_COMPRA, IGeneradorPdfCompra } from './domain/ports/i-generador-pdf-compra';
+import { PdfkitGeneradorPdfCompra } from './infrastructure/pdf/pdfkit-generador-pdf-compra';
+import { ClientesModule } from '../clientes/clientes.module';
+import {
+  IUsuarioMasterChecker,
+  USUARIO_MASTER_CHECKER,
+} from '../tickets/domain/ports/i-usuario-master.checker';
+import { VerLogoClienteUseCase } from '../clientes/application/use-cases/ver-logo-cliente.use-case';
 import { ObtenerCompraUseCase } from './application/use-cases/obtener-compra.use-case';
 import { ListarOperacionesCompraUseCase } from './application/use-cases/listar-operaciones-compra.use-case';
 
@@ -116,7 +126,7 @@ import { ComprasController } from './interface/controllers/compras.controller';
  * USO, ADR-C2, ADR-C4, ADR-C5. Ref tasks: PR-22 (cierra la FASE E).
  */
 @Module({
-  imports: [AuthModule, TicketsModule, SectoresModule, InsumosModule],
+  imports: [AuthModule, TicketsModule, SectoresModule, InsumosModule, ClientesModule],
   controllers: [ComprasController],
   providers: [
     { provide: COMPRA_REPOSITORY, useClass: PrismaCompraRepository },
@@ -136,6 +146,12 @@ import { ComprasController } from './interface/controllers/compras.controller';
       provide: ResolverTiposDeCompra,
       useFactory: (tipoRepo: ITipoTicketRepository) => new ResolverTiposDeCompra(tipoRepo),
       inject: [TIPO_TICKET_REPOSITORY],
+    },
+    {
+      provide: ResolverNombresSolicitantes,
+      useFactory: (usuarioMasterChecker: IUsuarioMasterChecker) =>
+        new ResolverNombresSolicitantes(usuarioMasterChecker),
+      inject: [USUARIO_MASTER_CHECKER],
     },
     {
       provide: RegistrarOperacionCompra,
@@ -328,9 +344,12 @@ import { ComprasController } from './interface/controllers/compras.controller';
     // ─── Consultas — SIN TENANT_TX_RUNNER, SIN bitácora (§4.9/§4.10, deliberado) ───
     {
       provide: ListarComprasUseCase,
-      useFactory: (compraRepo: ICompraRepository, tipos: ResolverTiposDeCompra) =>
-        new ListarComprasUseCase(compraRepo, tipos),
-      inject: [COMPRA_REPOSITORY, ResolverTiposDeCompra],
+      useFactory: (
+        compraRepo: ICompraRepository,
+        tipos: ResolverTiposDeCompra,
+        solicitantes: ResolverNombresSolicitantes,
+      ) => new ListarComprasUseCase(compraRepo, tipos, solicitantes),
+      inject: [COMPRA_REPOSITORY, ResolverTiposDeCompra, ResolverNombresSolicitantes],
     },
     {
       provide: ObtenerCompraUseCase,
@@ -349,6 +368,24 @@ import { ComprasController } from './interface/controllers/compras.controller';
       useFactory: (compraRepo: ICompraRepository, tipos: ResolverTiposDeCompra) =>
         new ExportarComprasUseCase(compraRepo, tipos),
       inject: [COMPRA_REPOSITORY, ResolverTiposDeCompra],
+    },
+    { provide: GENERADOR_PDF_COMPRA, useFactory: () => new PdfkitGeneradorPdfCompra() },
+    {
+      provide: GenerarPdfCompraUseCase,
+      useFactory: (
+        compraRepo: ICompraRepository,
+        tipos: ResolverTiposDeCompra,
+        solicitantes: ResolverNombresSolicitantes,
+        verLogoCliente: VerLogoClienteUseCase,
+        generador: IGeneradorPdfCompra,
+      ) => new GenerarPdfCompraUseCase(compraRepo, tipos, solicitantes, verLogoCliente, generador),
+      inject: [
+        COMPRA_REPOSITORY,
+        ResolverTiposDeCompra,
+        ResolverNombresSolicitantes,
+        VerLogoClienteUseCase,
+        GENERADOR_PDF_COMPRA,
+      ],
     },
     {
       provide: ExportarCompraUseCase,

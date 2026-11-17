@@ -13,8 +13,9 @@ demás.
 ## Qué muestra el listado
 
 Cada fila es una compra, con las columnas **Número**, **Fecha** (la fecha de
-solicitud), **Motivo**, **Estado**, **Totales por moneda** y **Progreso**. Haga
-clic en una fila para abrir la compra completa, con sus ítems.
+solicitud), **Motivo**, **Solicitante** (quién pidió la compra), **Tipo**,
+**Estado**, **Totales por moneda** y **Progreso**. Haga clic en una fila para
+abrir la compra completa, con sus ítems; ahí también figura el solicitante.
 
 ## Los cinco estados
 
@@ -139,13 +140,36 @@ siempre.
 ## Exportar una sola compra
 
 Dentro de una compra, el botón **Exportar** de arriba a la derecha descarga esa
-compra sola, en **Excel** o en **CSV**. El archivo trae una fila por ítem, con
-la descripción del ítem completa, la cantidad, el proveedor, la moneda, el
-monto, el total, la fecha de cotización, la aprobación, las fechas de orden,
-recepción y entrega, si está comprado y entregado, y las observaciones.
+compra sola, en **Excel** o en **CSV**.
 
-Las primeras columnas de cada fila repiten los datos de la compra (número,
-motivo, descripción, tipo y estado). Así el archivo se puede filtrar y sumar en
-la planilla sin celdas combinadas. Los ítems eliminados no aparecen; si la
-compra no tiene ningún ítem, el archivo trae igual una fila con los datos de la
-compra y las columnas de ítem vacías.
+- **Arriba, los datos generales de la compra**: una fila con los títulos
+  (número, fecha de solicitud, motivo, descripción, tipo y estado) y otra con
+  sus valores.
+- **Una fila vacía** que separa las dos partes.
+- **Abajo, los ítems**: una fila por ítem, con la descripción completa, la
+  cantidad, el proveedor, la moneda, el monto, el total, la fecha de
+  cotización, la aprobación, las fechas de orden, recepción y entrega, si está
+  comprado y entregado, y las observaciones.
+
+Los ítems eliminados no aparecen. Si la compra no tiene ningún ítem, el archivo
+trae igual los datos generales y el encabezado de los ítems, sin filas debajo.
+
+## Imprimir una compra en PDF
+
+Dentro de una compra, el botón **Imprimir PDF** descarga la compra como una
+**solicitud de compra**, con formato de presupuesto, lista para imprimir o
+enviar:
+
+- **Encabezado** con el logo de su organización (o su nombre, si no cargó un
+  logo), el número de la compra y la fecha de solicitud.
+- **Datos generales**: motivo, estado, tipo, solicitante y la descripción
+  completa.
+- **Tabla de ítems** con la descripción completa, la cantidad, el proveedor, la
+  moneda, el precio unitario, el total y el estado de aprobación. Debajo de cada
+  descripción figuran la fecha de cotización y, si las hay, las observaciones.
+  Aparecen todos los ítems no eliminados, también los pendientes y los
+  rechazados.
+- **Total solicitado** por moneda.
+
+El documento es de uso interno: **no es una factura ni un comprobante fiscal**,
+y así lo aclara al pie.

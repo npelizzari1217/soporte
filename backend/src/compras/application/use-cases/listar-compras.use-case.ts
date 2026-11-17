@@ -4,6 +4,7 @@ import { EstadoCompra, FiltroGrupoEstadoCompra } from '../../domain/services/est
 import { CompraListFiltros, ICompraRepository } from '../../domain/ports/i-compra.repository';
 import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
 import { tiposVisiblesDeCompras } from '../services/visibilidad-compra';
+import { ResolverNombresSolicitantes } from '../services/nombres-de-solicitantes';
 import {
   ResolverTiposDeCompra,
   TipoTicketDeCompra,
@@ -70,6 +71,8 @@ export interface CompraListItemDto {
   totalesPorMoneda: Record<string, number>;
   /** Tipo de ticket de la compra, o `null` si es anterior al tipo (odd/compras-por-tipo, S4). */
   tipoTicket: TipoTicketDeCompra | null;
+  /** "Nombre Apellido" de quien pidió la compra, o `null` si el usuario no se encuentra (S9). */
+  solicitanteNombre: string | null;
 }
 
 /**
@@ -121,6 +124,7 @@ export class ListarComprasUseCase {
   constructor(
     private readonly compraRepo: Pick<ICompraRepository, 'findPaginaConItems'>,
     private readonly tipos: Pick<ResolverTiposDeCompra, 'resolver'>,
+    private readonly solicitantes: Pick<ResolverNombresSolicitantes, 'resolver'>,
   ) {}
 
   /**
@@ -166,10 +170,13 @@ export class ListarComprasUseCase {
       offset: (pagina - 1) * porPagina,
     };
     const { compras, total } = await this.compraRepo.findPaginaConItems(filtros);
-    const tipos = await this.tipos.resolver(compras.map((compra) => compra.tipoTicketId));
+    const [tipos, nombres] = await Promise.all([
+      this.tipos.resolver(compras.map((compra) => compra.tipoTicketId)),
+      this.solicitantes.resolver(compras.map((compra) => compra.solicitanteId)),
+    ]);
 
     return Result.ok({
-      items: compras.map((compra) => ListarComprasUseCase.aFilaListado(compra, tipos)),
+      items: compras.map((compra) => ListarComprasUseCase.aFilaListado(compra, tipos, nombres)),
       total,
       pagina,
       porPagina,
@@ -180,6 +187,7 @@ export class ListarComprasUseCase {
   private static aFilaListado(
     compra: CompraEntity,
     tipos: ReadonlyMap<string, TipoTicketDeCompra>,
+    nombres: ReadonlyMap<string, string>,
   ): CompraListItemDto {
     return {
       id: compra.id,
@@ -191,6 +199,7 @@ export class ListarComprasUseCase {
       cerrado: compra.cerrado,
       totalesPorMoneda: compra.totalesPorMoneda,
       tipoTicket: tipoDeCompra(compra.tipoTicketId, tipos),
+      solicitanteNombre: nombres.get(compra.solicitanteId) ?? null,
     };
   }
 }

@@ -42,6 +42,7 @@ import { ItemCreateDialog } from "./item-create-dialog";
 import { CompraEditDialog } from "./compra-edit-dialog";
 import { CompraCancelarDialog } from "./compra-cancelar-dialog";
 import { ExportarCompraButton } from "./exportar-compra-button";
+import { CompraPdfButton } from "./compra-pdf-button";
 
 export interface CompraDetailViewProps {
   compraId: string;
@@ -73,6 +74,7 @@ export function CompraDetailView({ compraId }: CompraDetailViewProps) {
         description={compra.motivo}
         actions={
           <div className="flex items-center gap-2">
+            <CompraPdfButton compraId={compra.id} numero={compra.numero} />
             <ExportarCompraButton compraId={compra.id} />
             <Can permiso="COMPRAS:MODIFICACION">
               <CompraEditDialog compra={compra} />
@@ -113,6 +115,10 @@ export function CompraDetailView({ compraId }: CompraDetailViewProps) {
           <span className="text-sm text-foreground">
             {formatearTotalesPorMoneda(compra.totalesPorMoneda)}
           </span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">Solicitante</span>
+          <span className="text-sm text-foreground">{compra.solicitanteNombre ?? "—"}</span>
         </div>
         {/* odd/compras-por-tipo (S4): una compra sin tipo la ve cualquiera con LECTURA de Compras. */}
         <div className="flex flex-col gap-1">

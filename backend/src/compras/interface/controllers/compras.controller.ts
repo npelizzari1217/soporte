@@ -25,6 +25,7 @@
  *   GET    /compras                                               → ListarComprasUseCase                [COMPRAS:LECTURA]
  *   GET    /compras/export                                        → ExportarComprasUseCase              [COMPRAS:LECTURA]
  *   GET    /compras/:id/export                                    → ExportarCompraUseCase               [COMPRAS:LECTURA]
+ *   GET    /compras/:id/pdf                                       → GenerarPdfCompraUseCase             [COMPRAS:LECTURA]
  *   GET    /compras/:id                                           → ObtenerCompraUseCase                [COMPRAS:LECTURA]
  *   GET    /compras/:id/operaciones                               → ListarOperacionesCompraUseCase      [COMPRAS:LECTURA]
  *
@@ -108,6 +109,7 @@ import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { SeguimientoInsumo } from '../../../insumos/domain/entities/unidad-insumo.entity';
 import { ResolverTiposDeCompra, tipoDeCompra } from '../../application/services/tipos-de-compra';
+import { ResolverNombresSolicitantes } from '../../application/services/nombres-de-solicitantes';
 import { VisibilidadCompraGuard } from '../guards/visibilidad-compra.guard';
 
 import { CrearCompraUseCase } from '../../application/use-cases/crear-compra.use-case';
@@ -128,6 +130,7 @@ import { ObtenerCompraUseCase } from '../../application/use-cases/obtener-compra
 import { ListarOperacionesCompraUseCase } from '../../application/use-cases/listar-operaciones-compra.use-case';
 import { ExportarComprasUseCase } from '../../application/use-cases/exportar-compras.use-case';
 import { ExportarCompraUseCase } from '../../application/use-cases/exportar-compra.use-case';
+import { GenerarPdfCompraUseCase } from '../../application/use-cases/generar-pdf-compra.use-case';
 
 import {
   CantidadOrdenadaExcedeSolicitadaError,
@@ -327,8 +330,10 @@ export class ComprasController {
     private readonly listarOperacionesCompraUseCase: ListarOperacionesCompraUseCase,
     private readonly exportarComprasUseCase: ExportarComprasUseCase,
     private readonly exportarCompraUseCase: ExportarCompraUseCase,
+    private readonly generarPdfCompraUseCase: GenerarPdfCompraUseCase,
     private readonly alcances: CargadorAlcanceTicket,
     private readonly tiposDeCompra: ResolverTiposDeCompra,
+    private readonly solicitantes: ResolverNombresSolicitantes,
   ) {}
 
   /** Detalle de una compra con el nombre de su tipo resuelto (odd/compras-por-tipo, L3). */
@@ -336,11 +341,15 @@ export class ComprasController {
     compra: CompraEntity,
     seguimientoPorInsumo?: ReadonlyMap<string, SeguimientoInsumo>,
   ): Promise<CompraDetalleResponseDto> {
-    const tipos = await this.tiposDeCompra.resolver([compra.tipoTicketId]);
+    const [tipos, nombres] = await Promise.all([
+      this.tiposDeCompra.resolver([compra.tipoTicketId]),
+      this.solicitantes.resolver([compra.solicitanteId]),
+    ]);
     return toCompraDetalleResponseDto(
       compra,
       tipoDeCompra(compra.tipoTicketId, tipos),
       seguimientoPorInsumo,
+      nombres.get(compra.solicitanteId) ?? null,
     );
   }
 
@@ -890,6 +899,37 @@ export class ComprasController {
       throw toHttpException(result.getError());
     }
     return entregarExport(res, formato, result.getValue());
+  }
+
+  /**
+   * GET /compras/:id/pdf
+   * La compra como "Solicitud de compra" en PDF, con formato de presupuesto
+   * (odd/tasks/compra-export-secciones-y-pdf.md, S4-S7). Mismo gate que el detalle.
+   * @returns 200 + el PDF como descarga (`solicitud-de-compra-<numero>.pdf`)
+   * @throws 404 compra inexistente, eliminada, u oculta por tipo (`VisibilidadCompraGuard`)
+   */
+  @Get(':id/pdf')
+  @RequiereAcciones('COMPRAS:LECTURA')
+  async pdf(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: RespuestaConHeaders,
+  ): Promise<StreamableFile> {
+    const result = await this.generarPdfCompraUseCase.execute({
+      compraId: id,
+      // `TenantGuard` garantiza un tenant resuelto: el token MASTER no llega acá.
+      clienteId: user.cliente_id ?? '',
+      clienteNombre: user.cliente_nombre ?? '',
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    const { buffer, nombreArchivo } = result.getValue();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+    // Sin exponerlo por CORS, el frontend no puede leer el nombre del archivo.
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    return new StreamableFile(buffer);
   }
 
   /**

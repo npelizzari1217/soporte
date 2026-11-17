@@ -121,6 +121,52 @@ export function serializarCsv<T>(filas: readonly T[], columnas: readonly Columna
 }
 
 /**
+ * Bloque de un archivo exportado con varias tablas una debajo de otra (p. ej.
+ * la cabecera de una compra arriba y sus ítems abajo). Las filas ya vienen
+ * resueltas a valores de celda: así una misma exportación puede mezclar
+ * secciones de tipos distintos sin perder el tipado de cada una.
+ */
+export interface SeccionExport {
+  readonly encabezados: readonly string[];
+  readonly filas: readonly (readonly ValorCelda[])[];
+}
+
+/**
+ * Arma una sección a partir de filas y columnas, con el mismo contrato que
+ * `serializarCsv`.
+ *
+ * @param filas Filas de la sección, en orden.
+ * @param columnas Columnas de la sección, en orden.
+ * @returns La sección con sus encabezados y valores resueltos.
+ */
+export function seccionExport<T>(
+  filas: readonly T[],
+  columnas: readonly ColumnaCsv<T>[],
+): SeccionExport {
+  return {
+    encabezados: columnas.map((columna) => columna.encabezado),
+    filas: filas.map((fila) => columnas.map((columna) => columna.valor(fila))),
+  };
+}
+
+/**
+ * Serializa varias secciones a un CSV, separadas por una línea vacía. Cada
+ * sección lleva su propio encabezado.
+ *
+ * @param secciones Secciones en el orden en que deben salir.
+ * @returns El CSV con BOM.
+ */
+export function serializarCsvSecciones(secciones: readonly SeccionExport[]): string {
+  const bloques = secciones.map((seccion) =>
+    [
+      seccion.encabezados.map(escaparCelda).join(SEPARADOR_CSV),
+      ...seccion.filas.map((fila) => fila.map(escaparValor).join(SEPARADOR_CSV)),
+    ].join(FIN_DE_LINEA),
+  );
+  return BOM_UTF8 + bloques.join(FIN_DE_LINEA + FIN_DE_LINEA);
+}
+
+/**
  * Convierte un valor de celda a texto. `null`/`undefined` son celda VACÍA, no
  * el texto "null" — una celda vacía es lo que significa "este dato no
  * existe", y "null" en una planilla es ruido que el usuario tiene que borrar

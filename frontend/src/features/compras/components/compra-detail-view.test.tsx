@@ -16,6 +16,7 @@ const COMPRA_DETALLE = {
   motivo: "Reposición de insumos",
   descripcion: "Compra trimestral de librería",
   solicitanteId: "u1",
+  solicitanteNombre: "Ana Pérez",
   cicloId: "ciclo1",
   sectorId: null,
   tipoTicket: { id: "11111111-1111-4111-8111-111111111111", nombre: "Soporte" },
@@ -130,7 +131,7 @@ describe("CompraDetailView", () => {
     expect(screen.getByText("Rechazado")).toBeInTheDocument();
   });
 
-  it("muestra el botón Exportar con solo el permiso de lectura del módulo", async () => {
+  it("muestra los botones Imprimir PDF y Exportar con solo el permiso de lectura del módulo", async () => {
     server.use(
       http.get("/api/compras/c1", () => HttpResponse.json(COMPRA_DETALLE)),
       http.get("/api/compras/c1/operaciones", () => HttpResponse.json(OPERACIONES)),
@@ -141,6 +142,30 @@ describe("CompraDetailView", () => {
 
     await screen.findByText("Resmas de papel A4");
     expect(screen.getByRole("button", { name: /^exportar$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /imprimir pdf/i })).toBeInTheDocument();
+  });
+
+  it("muestra el nombre del solicitante, y un guion si el usuario no se encuentra", async () => {
+    server.use(
+      http.get("/api/compras/c1", () => HttpResponse.json(COMPRA_DETALLE)),
+      http.get("/api/compras/c1/operaciones", () => HttpResponse.json(OPERACIONES)),
+      http.get("/api/compras/c2", () =>
+        HttpResponse.json({ ...COMPRA_DETALLE, id: "c2", solicitanteNombre: null }),
+      ),
+      http.get("/api/compras/c2/operaciones", () => HttpResponse.json(OPERACIONES)),
+    );
+    const { unmount } = renderWithProviders(<CompraDetailView compraId="c1" />, {
+      user: buildUser({ modulos: ["COMPRAS"] }),
+    });
+    await screen.findByText("Resmas de papel A4");
+    expect(screen.getByText("Solicitante").nextElementSibling).toHaveTextContent("Ana Pérez");
+    unmount();
+
+    renderWithProviders(<CompraDetailView compraId="c2" />, {
+      user: buildUser({ modulos: ["COMPRAS"] }),
+    });
+    await screen.findByText("Resmas de papel A4");
+    expect(screen.getByText("Solicitante").nextElementSibling).toHaveTextContent("—");
   });
 
   // render-fechas-frontend: `Compra.fechaSolicitud` e

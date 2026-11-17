@@ -28,6 +28,7 @@ const COMPRA: CompraListItem = {
   comprado: false,
   cerrado: false,
   totalesPorMoneda: { ARS: 1000 },
+  solicitanteNombre: "Ana Pérez",
 };
 
 describe("ComprasListView", () => {
@@ -48,6 +49,27 @@ describe("ComprasListView", () => {
     renderWithProviders(<ComprasListView />, { user: buildUser({ modulos: ["COMPRAS"] }) });
 
     expect(await screen.findByText("Página 1 de 3")).toBeInTheDocument();
+  });
+
+  it("muestra la columna Solicitante con el nombre, y un guion si el usuario no se encuentra", async () => {
+    server.use(
+      http.get("/api/compras", () =>
+        HttpResponse.json({
+          items: [
+            COMPRA,
+            { ...COMPRA, id: "c2", numero: "COM-2026-00002", solicitanteNombre: null },
+          ],
+          total: 2,
+          pagina: 1,
+          porPagina: 20,
+        }),
+      ),
+    );
+    renderWithProviders(<ComprasListView />, { user: buildUser({ modulos: ["COMPRAS"] }) });
+
+    expect(await screen.findByRole("columnheader", { name: "Solicitante" })).toBeInTheDocument();
+    expect(screen.getByText("COM-2026-00001").closest("tr")).toHaveTextContent("Ana Pérez");
+    expect(screen.getByText("COM-2026-00002").closest("tr")).toHaveTextContent("—");
   });
 
   it("ir a la página siguiente actualiza la URL (searchParams) con `pagina=2`", async () => {

@@ -166,6 +166,7 @@ export function ComprasListView() {
     // de "17/08/2026" (render-fechas-frontend).
     { key: "fechaSolicitud", header: "Fecha", render: (row) => formatearFechaCalendario(row.fechaSolicitud) },
     { key: "motivo", header: "Motivo" },
+    { key: "solicitanteNombre", header: "Solicitante", render: (row) => row.solicitanteNombre ?? "—" },
     { key: "tipoTicket", header: "Tipo", render: (row) => row.tipoTicket?.nombre ?? "Sin tipo" },
     {
       key: "estado",

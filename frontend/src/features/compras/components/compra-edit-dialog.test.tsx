@@ -26,6 +26,7 @@ function buildCompra(overrides: Partial<CompraDetalle> = {}): CompraDetalle {
     motivo: "Motivo original",
     descripcion: null,
     solicitanteId: "usuario-1",
+    solicitanteNombre: null,
     cicloId: "ciclo-1",
     sectorId: null,
     tipoTicket: null,
