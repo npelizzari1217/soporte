@@ -127,6 +127,14 @@ describe('PdfkitGeneradorPdfCompra', () => {
     expect(textos).toContain('9.999.999.999,99');
   });
 
+  it('una cantidad decimal de cientos de miles entra en su columna sin partirse', async () => {
+    const textos = corridas(
+      await generador.generar(vista({ items: [item({ cantidad: '999.999,99' })] })),
+    ).map((c) => c.texto);
+
+    expect(textos).toContain('999.999,99');
+  });
+
   it('un texto larguísimo pagina sin invadir la franja del pie', async () => {
     const pdf = await generador.generar(
       vista({
@@ -146,7 +154,8 @@ describe('PdfkitGeneradorPdfCompra', () => {
   it('lista cada ítem con precio y total en su moneda, su estado y el detalle de cotización y observaciones', async () => {
     const texto = textoDePdf(await generador.generar(vista()));
 
-    expect(texto).toContain('Notebook Dell Latitude 5440');
+    // La descripción puede ocupar varias líneas de su celda: se compara sin los saltos.
+    expect(texto.replace(/\s+/g, ' ')).toContain('Notebook Dell Latitude 5440');
     // Cada importe entra en una sola línea de su celda: no se parte en dos.
     expect(texto.split('\n')).toEqual(
       expect.arrayContaining(['1.250.000,00', '2.500.000,00', 'ARS']),
@@ -154,7 +163,7 @@ describe('PdfkitGeneradorPdfCompra', () => {
     expect(texto).toContain('Instalación de red');
     expect(texto.split('\n')).toEqual(expect.arrayContaining(['USD', '300,00']));
     expect(texto.split('\n')).toContain('Rechazado');
-    expect(texto).toContain('Cotizado el 15/01/2026  ·  Servicio');
+    expect(texto).toContain('Cotizado el 15/01/2026 · Servicio');
     expect(texto).toContain('Obs.: Requiere corte de luz');
   });
 

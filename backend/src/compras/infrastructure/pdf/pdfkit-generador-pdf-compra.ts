@@ -37,13 +37,13 @@ const FUENTE_MINIMA = 6;
 /** Columnas de la tabla de ítems; suman el ancho útil de un A4 con `MARGEN`. */
 const COLUMNAS: readonly ColumnaTabla[] = [
   { titulo: '#', ancho: 18, alinear: 'center', ajustar: true },
-  { titulo: 'Descripción', ancho: 125, alinear: 'left', ajustar: false },
-  { titulo: 'Cant.', ancho: 32, alinear: 'right', ajustar: true },
-  { titulo: 'Proveedor', ancho: 72, alinear: 'left', ajustar: false },
+  { titulo: 'Descripción', ancho: 121, alinear: 'left', ajustar: false },
+  { titulo: 'Cant.', ancho: 46, alinear: 'right', ajustar: true },
+  { titulo: 'Proveedor', ancho: 66, alinear: 'left', ajustar: false },
   { titulo: 'Moneda', ancho: 42, alinear: 'center', ajustar: true },
   { titulo: 'Precio unit.', ancho: 76, alinear: 'right', ajustar: true },
   { titulo: 'Total', ancho: 82, alinear: 'right', ajustar: true },
-  { titulo: 'Estado', ancho: 58, alinear: 'center', ajustar: true },
+  { titulo: 'Estado', ancho: 54, alinear: 'center', ajustar: true },
 ];
 
 export interface OpcionesPdfkitCompra {
@@ -322,7 +322,7 @@ export class PdfkitGeneradorPdfCompra implements IGeneradorPdfCompra {
   private detalle(item: ItemCompraPdf): string {
     const partes = [`Cotizado el ${item.fechaCotizacion}`];
     if (item.esServicio) partes.push('Servicio');
-    const linea = partes.join('  ·  ');
+    const linea = partes.join(' · ');
     return item.observaciones ? `${linea}\nObs.: ${item.observaciones}` : linea;
   }
 
