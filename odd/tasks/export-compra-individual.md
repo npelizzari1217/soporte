@@ -15,8 +15,8 @@ Rama `feat/export-compra-individual`. Sigue a la #546 (descripción en el export
 
 ## Tasks
 
-- [ ] **T1** — S1-S5 — backend: `ExportarCompraUseCase` + ruta + tests. Inline. Commit: —
-- [ ] **T2** — S6, S7 — frontend: botón en el detalle + test + Ayuda. Inline. Commit: —
+- [x] **T1** — S1-S5 — backend: `ExportarCompraUseCase` + ruta + tests. Inline. Commit: `8bc718e2`
+- [x] **T2** — S6, S7 — frontend: botón en el detalle + test + Ayuda. Inline. Commit: `0ba1fe41`
 
 ## Log
 
