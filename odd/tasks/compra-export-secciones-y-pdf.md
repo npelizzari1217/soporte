@@ -16,9 +16,9 @@ Rama `feat/compra-export-secciones-y-pdf`. Sigue a `odd/tasks/export-compra-indi
 
 ## Tasks
 
-- [ ] **T1** — S1-S3 — backend: exportación por secciones (CSV/xlsx) + tests + Ayuda. Inline. Commit: —
-- [ ] **T2** — S4-S7 — backend: PDF de la compra (pdfkit, patrón de `ticket-pdf`) + ruta + tests. Inline. Commit: —
-- [ ] **T3** — S8 — frontend: botón PDF en el detalle + test + Ayuda. Inline. Commit: —
+- [x] **T1** — S1-S3 — backend: exportación por secciones (CSV/xlsx) + tests + Ayuda. Inline. Commit: `49deef29`
+- [x] **T2** — S4-S7 — backend: PDF de la compra (pdfkit, patrón de `ticket-pdf`) + ruta + tests. Inline. Commit: `1298e96e`
+- [x] **T3** — S8 — frontend: botón PDF en el detalle + test + Ayuda. Inline. Commit: `69c972c5`
 
 ## Log
 
