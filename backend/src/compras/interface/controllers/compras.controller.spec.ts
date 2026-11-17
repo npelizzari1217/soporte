@@ -106,6 +106,7 @@ import { ListarComprasUseCase } from '../../application/use-cases/listar-compras
 import { ObtenerCompraUseCase } from '../../application/use-cases/obtener-compra.use-case';
 import { ListarOperacionesCompraUseCase } from '../../application/use-cases/listar-operaciones-compra.use-case';
 import { ExportarComprasUseCase } from '../../application/use-cases/exportar-compras.use-case';
+import { ExportarCompraUseCase } from '../../application/use-cases/exportar-compra.use-case';
 import { espiado } from '../../../shared/test-helpers/espiado';
 import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
 import { ResolverTiposDeCompra } from '../../application/services/tipos-de-compra';
@@ -148,6 +149,7 @@ function buildController() {
   const obtenerCompraUseCase = espiado(ObtenerCompraUseCase);
   const listarOperacionesCompraUseCase = espiado(ListarOperacionesCompraUseCase);
   const exportarComprasUseCase = espiado(ExportarComprasUseCase);
+  const exportarCompraUseCase = espiado(ExportarCompraUseCase);
   // odd/compras-por-tipo: cargador REAL sobre un repositorio de permisos falso.
   // USUARIO es ADMINISTRADOR, así que su alcance sale sin restricción y sin
   // consultar; `permisosDe` alimenta a un actor restringido cuando hace falta.
@@ -185,6 +187,7 @@ function buildController() {
     obtenerCompraUseCase.caso,
     listarOperacionesCompraUseCase.caso,
     exportarComprasUseCase.caso,
+    exportarCompraUseCase.caso,
     alcances,
     tiposDeCompra,
   );
@@ -209,6 +212,7 @@ function buildController() {
     obtenerCompraUseCase,
     listarOperacionesCompraUseCase,
     exportarComprasUseCase,
+    exportarCompraUseCase,
   };
 }
 
@@ -794,6 +798,49 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
 
       expect(listarComprasUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ tipoTicketId: TIPO_SOPORTE, alcance: SIN_RESTRICCION }),
+      );
+    });
+  });
+
+  describe('GET /compras/:id/export (exportación de una compra)', () => {
+    function respuestaFalsa() {
+      const headers = new Map<string, string>();
+      return {
+        res: { setHeader: (nombre: string, valor: string) => void headers.set(nombre, valor) },
+        headers,
+      };
+    }
+
+    it('entrega el archivo como descarga y le pasa al use case la compra y el formato', async () => {
+      const { controller, exportarCompraUseCase } = buildController();
+      exportarCompraUseCase.execute.mockResolvedValue(
+        Result.ok({
+          contenido: Buffer.from('PK'),
+          nombreArchivo: 'compra-COM-2026-00001-2026-11-17.xlsx',
+        }),
+      );
+      const { res, headers } = respuestaFalsa();
+
+      const salida = await controller.exportarUna('compra-1', res, 'xlsx');
+
+      expect(salida).toBeInstanceOf(StreamableFile);
+      expect(exportarCompraUseCase.execute).toHaveBeenLastCalledWith(
+        { compraId: 'compra-1' },
+        'xlsx',
+      );
+      expect(headers.get('Content-Disposition')).toBe(
+        'attachment; filename="compra-COM-2026-00001-2026-11-17.xlsx"',
+      );
+    });
+
+    it('compra inexistente → 404', async () => {
+      const { controller, exportarCompraUseCase } = buildController();
+      exportarCompraUseCase.execute.mockResolvedValue(
+        Result.fail(new CompraNoEncontradaError('compra-1')),
+      );
+
+      await expect(controller.exportarUna('compra-1', respuestaFalsa().res)).rejects.toBeInstanceOf(
+        NotFoundException,
       );
     });
   });

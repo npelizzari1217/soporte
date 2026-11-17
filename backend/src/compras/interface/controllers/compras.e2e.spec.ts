@@ -1799,10 +1799,24 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
         `${baseUrl}/compras/${deSoporte.id}`,
         bearer(lector.accessToken),
       );
+      const ocultaExport = await httpGet(
+        `${baseUrl}/compras/${deEdilicia.id}/export`,
+        bearer(lector.accessToken),
+      );
+      const visibleExport = await fetch(`${baseUrl}/compras/${deSoporte.id}/export`, {
+        headers: bearer(lector.accessToken),
+      });
 
       expect(oculta.status).toBe(404);
       expect(oculta.data.message).toBe(`Compra con id "${deEdilicia.id}" no encontrada.`);
       expect(ocultaOps.status).toBe(404);
+      // odd/tasks/export-compra-individual.md, S4: la exportación no filtra lo que el detalle oculta.
+      expect(ocultaExport.status).toBe(404);
+      expect(visibleExport.status).toBe(200);
+      expect(visibleExport.headers.get('Content-Disposition')).toContain(
+        `compra-${deSoporte.numero}-`,
+      );
+      expect((await visibleExport.text()).split('\r\n')[0]).toContain('Descripción del ítem');
       expect(visible.status).toBe(200);
       expect(visible.data.tipoTicket).toEqual({ id: tipoSoporteId, nombre: 'Soporte E2E' });
     });

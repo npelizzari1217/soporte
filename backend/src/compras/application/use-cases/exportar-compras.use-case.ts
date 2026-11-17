@@ -46,7 +46,7 @@ const GRUPO_ESTADO_DEFAULT: FiltroGrupoEstadoCompra = 'ACTIVAS';
  * una planilla, no el sistema: `APROBADO_PARCIALMENTE` es un código interno
  * y no tiene por qué salir del backend.
  */
-const ETIQUETA_ESTADO: Readonly<Record<EstadoCompra, string>> = Object.freeze({
+export const ETIQUETA_ESTADO: Readonly<Record<EstadoCompra, string>> = Object.freeze({
   PENDIENTE: 'Pendiente',
   APROBADO: 'Aprobado',
   APROBADO_PARCIALMENTE: 'Aprobado parcialmente',

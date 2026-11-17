@@ -130,6 +130,19 @@ describe("CompraDetailView", () => {
     expect(screen.getByText("Rechazado")).toBeInTheDocument();
   });
 
+  it("muestra el botón Exportar con solo el permiso de lectura del módulo", async () => {
+    server.use(
+      http.get("/api/compras/c1", () => HttpResponse.json(COMPRA_DETALLE)),
+      http.get("/api/compras/c1/operaciones", () => HttpResponse.json(OPERACIONES)),
+    );
+    renderWithProviders(<CompraDetailView compraId="c1" />, {
+      user: buildUser({ modulos: ["COMPRAS"] }),
+    });
+
+    await screen.findByText("Resmas de papel A4");
+    expect(screen.getByRole("button", { name: /^exportar$/i })).toBeInTheDocument();
+  });
+
   // render-fechas-frontend: `Compra.fechaSolicitud` e
   // `ItemCompra.fechaOrden`/`fechaRecepcion`/`fechaEntrega` son @db.Date.
   // Cabecera e ítems usaban `aFechaInput` (normalizador de INPUT) y
