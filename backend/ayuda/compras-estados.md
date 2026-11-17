@@ -152,3 +152,23 @@ compra sola, en **Excel** o en **CSV**.
 
 Los ítems eliminados no aparecen. Si la compra no tiene ningún ítem, el archivo
 trae igual los datos generales y el encabezado de los ítems, sin filas debajo.
+
+## Imprimir una compra en PDF
+
+Dentro de una compra, el botón **Imprimir PDF** descarga la compra como una
+**solicitud de compra**, con formato de presupuesto, lista para imprimir o
+enviar:
+
+- **Encabezado** con el logo de su organización (o su nombre, si no cargó un
+  logo), el número de la compra y la fecha de solicitud.
+- **Datos generales**: motivo, estado, tipo, solicitante y la descripción
+  completa.
+- **Tabla de ítems** con la descripción completa, la cantidad, el proveedor, la
+  moneda, el precio unitario, el total y el estado de aprobación. Debajo de cada
+  descripción figuran la fecha de cotización y, si las hay, las observaciones.
+  Aparecen todos los ítems no eliminados, también los pendientes y los
+  rechazados.
+- **Total solicitado** por moneda.
+
+El documento es de uso interno: **no es una factura ni un comprobante fiscal**,
+y así lo aclara al pie.
