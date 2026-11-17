@@ -6,7 +6,7 @@ Rama `feat/export-compra-individual`. Sigue a la #546 (descripción en el export
 ## Specs
 
 - **S1** — Formato: "CSV y xlsx, como el listado". Reusa `armarExport` y el botón compartido `ExportarCsvButton`.
-- **S2** — Una fila por ítem NO eliminado. Las primeras columnas repiten los datos de la compra: Número, Motivo, Descripción (de la compra), Tipo, Estado.
+- **S2** — Una fila por ítem NO eliminado. Las primeras columnas repiten los datos de la compra: Número, Motivo, Descripción (de la compra), Tipo, Estado. Una compra sin ítems vivos exporta una fila con la cabecera y las columnas de ítem vacías (L4).
 - **S3** — Columnas por ítem: "Lo de la pantalla del detalle" — descripción completa, cantidad, proveedor, monto, moneda, total, estado de aprobación, fechas de orden / recepción / entrega, comprado, entregado — más, por pedido del dueño ("sumalo"), fecha de cotización y observaciones.
 - **S4** — Ruta `GET /compras/:id/export?formato=csv|xlsx`, gate `COMPRAS:LECTURA`. Una compra inexistente, eliminada o de un tipo que el actor no ve da 404 (`VisibilidadCompraGuard`).
 - **S5** — Nombre de archivo con prefijo `compra-<número>` (p. ej. `compra-COM-2026-00001-2026-11-17.xlsx`).
@@ -23,3 +23,4 @@ Rama `feat/export-compra-individual`. Sigue a la #546 (descripción en el export
 - **L1** (2026-11-16, pedido original, en el contexto del export del listado): "cuando se haga el de una compra en particular podemos colocar los items con sus descripciones para que se pueda ver completa"
 - **L2** (2026-11-17): "Arrancamos". Decisiones: formato "CSV y xlsx, como el listado (Recomendado)"; contenido "Lo de la pantalla del detalle (Recomendado)".
 - **L3** (2026-11-17): la tabla real de la pantalla no muestra fecha de cotización ni observaciones; el dueño: "sumalo".
+- **L4** (2026-11-17): verificación: una compra sin ítems vivos exportaba solo el encabezado. El dueño: "imprimimos la cabecera y las columnas de los items vacias".

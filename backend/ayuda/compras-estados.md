@@ -146,4 +146,6 @@ recepción y entrega, si está comprado y entregado, y las observaciones.
 
 Las primeras columnas de cada fila repiten los datos de la compra (número,
 motivo, descripción, tipo y estado). Así el archivo se puede filtrar y sumar en
-la planilla sin celdas combinadas. Los ítems eliminados no aparecen.
+la planilla sin celdas combinadas. Los ítems eliminados no aparecen; si la
+compra no tiene ningún ítem, el archivo trae igual una fila con los datos de la
+compra y las columnas de ítem vacías.

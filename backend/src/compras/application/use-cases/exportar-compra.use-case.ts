@@ -9,6 +9,7 @@ import {
   ColumnaCsv,
   fechaCelda,
   montoCelda,
+  ValorCelda,
 } from '../../../shared/infrastructure/csv/csv';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
@@ -63,11 +64,14 @@ export class ExportarCompraUseCase {
 
     const tipos = await this.tipos.resolver([compra.tipoTicketId]);
     const nombreTipo = tipoDeCompra(compra.tipoTicketId, tipos)?.nombre ?? null;
-    const items = compra.items.filter((item) => !item.isDeleted());
+    const vivos = compra.items.filter((item) => !item.isDeleted());
+    // Sin ítems vivos sale igual una fila con la cabecera y las columnas de
+    // ítem vacías: un archivo con solo el encabezado no diría de qué compra es.
+    const filas: readonly (ItemCompraEntity | null)[] = vivos.length > 0 ? vivos : [null];
 
     return armarExport({
-      filas: items,
-      total: items.length,
+      filas,
+      total: filas.length,
       // Una compra no tiene un volumen de ítems que justifique un tope propio.
       tope: Number.POSITIVE_INFINITY,
       columnas: ExportarCompraUseCase.columnas(compra, nombreTipo),
@@ -81,27 +85,36 @@ export class ExportarCompraUseCase {
   private static columnas(
     compra: CompraEntity,
     nombreTipo: string | null,
-  ): readonly ColumnaCsv<ItemCompraEntity>[] {
+  ): readonly ColumnaCsv<ItemCompraEntity | null>[] {
+    /** Columna de ítem: vacía en la fila de una compra sin ítems. */
+    const deItem = (
+      encabezado: string,
+      valor: (item: ItemCompraEntity) => ValorCelda,
+    ): ColumnaCsv<ItemCompraEntity | null> => ({
+      encabezado,
+      valor: (item) => (item === null ? null : valor(item)),
+    });
+
     return [
       { encabezado: 'Número', valor: () => compra.numero },
       { encabezado: 'Motivo', valor: () => compra.motivo },
       { encabezado: 'Descripción de la compra', valor: () => compra.descripcion },
       { encabezado: 'Tipo', valor: () => nombreTipo },
       { encabezado: 'Estado de la compra', valor: () => ETIQUETA_ESTADO[compra.estado] },
-      { encabezado: 'Descripción del ítem', valor: (item) => item.descripcion },
-      { encabezado: 'Cantidad', valor: (item) => cantidadCsv(item.cantidad, true) },
-      { encabezado: 'Proveedor', valor: (item) => item.proveedor },
-      { encabezado: 'Moneda', valor: (item) => item.moneda },
-      { encabezado: 'Monto', valor: (item) => montoCelda(item.monto) },
-      { encabezado: 'Total', valor: (item) => montoCelda(item.totalItem) },
-      { encabezado: 'Fecha de cotización', valor: (item) => fechaCelda(item.fechaCotizacion) },
-      { encabezado: 'Aprobación', valor: (item) => ETIQUETA_APROBACION[item.estadoAprobacion] },
-      { encabezado: 'Fecha de orden', valor: (item) => fechaCelda(item.fechaOrden) },
-      { encabezado: 'Fecha de recepción', valor: (item) => fechaCelda(item.fechaRecepcion) },
-      { encabezado: 'Fecha de entrega', valor: (item) => fechaCelda(item.fechaEntrega) },
-      { encabezado: 'Comprado', valor: (item) => (item.comprado ? 'Sí' : 'No') },
-      { encabezado: 'Entregado', valor: (item) => (item.entregado ? 'Sí' : 'No') },
-      { encabezado: 'Observaciones', valor: (item) => item.observaciones },
+      deItem('Descripción del ítem', (item) => item.descripcion),
+      deItem('Cantidad', (item) => cantidadCsv(item.cantidad, true)),
+      deItem('Proveedor', (item) => item.proveedor),
+      deItem('Moneda', (item) => item.moneda),
+      deItem('Monto', (item) => montoCelda(item.monto)),
+      deItem('Total', (item) => montoCelda(item.totalItem)),
+      deItem('Fecha de cotización', (item) => fechaCelda(item.fechaCotizacion)),
+      deItem('Aprobación', (item) => ETIQUETA_APROBACION[item.estadoAprobacion]),
+      deItem('Fecha de orden', (item) => fechaCelda(item.fechaOrden)),
+      deItem('Fecha de recepción', (item) => fechaCelda(item.fechaRecepcion)),
+      deItem('Fecha de entrega', (item) => fechaCelda(item.fechaEntrega)),
+      deItem('Comprado', (item) => (item.comprado ? 'Sí' : 'No')),
+      deItem('Entregado', (item) => (item.entregado ? 'Sí' : 'No')),
+      deItem('Observaciones', (item) => item.observaciones),
     ];
   }
 }

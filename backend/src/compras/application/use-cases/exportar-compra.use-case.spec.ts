@@ -213,14 +213,22 @@ describe('ExportarCompraUseCase', () => {
     expect(celda.formula).toBeUndefined();
   });
 
-  it('una compra con todos sus ítems eliminados exporta solo el encabezado', async () => {
+  it('una compra sin ítems vivos exporta una fila con la cabecera y las columnas de ítem vacías', async () => {
     const borrado = crearItem();
     borrado.softDelete();
 
-    const [encabezado, ...resto] = await exportarCsv(crearCompra([borrado]));
+    const [encabezado, fila, ...resto] = await exportarCsv(crearCompra([borrado]));
 
     expect(encabezado.split(';')).toEqual(COLUMNAS_ESPERADAS);
-    expect(resto.filter((fila) => fila !== '')).toHaveLength(0);
+    expect(fila.split(';')).toEqual([
+      'COM-2026-00007',
+      'Reposición de equipos',
+      'Renovación del laboratorio',
+      'Soporte',
+      'Pendiente',
+      ...Array<string>(COLUMNAS_ESPERADAS.length - 5).fill(''),
+    ]);
+    expect(resto.filter((linea) => linea !== '')).toHaveLength(0);
   });
 
   it('compra inexistente → CompraNoEncontradaError', async () => {
