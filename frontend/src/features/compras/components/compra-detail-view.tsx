@@ -116,6 +116,10 @@ export function CompraDetailView({ compraId }: CompraDetailViewProps) {
             {formatearTotalesPorMoneda(compra.totalesPorMoneda)}
           </span>
         </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">Solicitante</span>
+          <span className="text-sm text-foreground">{compra.solicitanteNombre ?? "—"}</span>
+        </div>
         {/* odd/compras-por-tipo (S4): una compra sin tipo la ve cualquiera con LECTURA de Compras. */}
         <div className="flex flex-col gap-1">
           <span className="text-xs text-muted-foreground">Tipo</span>

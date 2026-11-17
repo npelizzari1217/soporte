@@ -13,8 +13,9 @@ demás.
 ## Qué muestra el listado
 
 Cada fila es una compra, con las columnas **Número**, **Fecha** (la fecha de
-solicitud), **Motivo**, **Estado**, **Totales por moneda** y **Progreso**. Haga
-clic en una fila para abrir la compra completa, con sus ítems.
+solicitud), **Motivo**, **Solicitante** (quién pidió la compra), **Tipo**,
+**Estado**, **Totales por moneda** y **Progreso**. Haga clic en una fila para
+abrir la compra completa, con sus ítems; ahí también figura el solicitante.
 
 ## Los cinco estados
 
