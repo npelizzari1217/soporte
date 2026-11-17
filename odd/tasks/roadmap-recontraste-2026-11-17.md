@@ -15,9 +15,9 @@ Rama `docs/roadmap-recontraste-2026-11-17`. `check-roadmap-fresco` falla: el anc
 
 ## Tasks
 
-- [x] T1 — S1: relevar y corregir las afirmaciones vencidas. Commit: —
-- [x] T2 — S2: sumar las entregas nuevas en "Recontraste del 2026-11-17". Commit: —
-- [x] T3 — S3: mover el ancla, correr el check. Commit: —
+- [x] T1 — S1: relevar y corregir las afirmaciones vencidas. Commit: `581be35a`
+- [x] T2 — S2: sumar las entregas nuevas en "Recontraste del 2026-11-17". Commit: `581be35a`
+- [x] T3 — S3: mover el ancla, correr el check. Commit: `581be35a`
 
 ## Log
 
