@@ -107,6 +107,7 @@ import { ObtenerCompraUseCase } from '../../application/use-cases/obtener-compra
 import { ListarOperacionesCompraUseCase } from '../../application/use-cases/listar-operaciones-compra.use-case';
 import { ExportarComprasUseCase } from '../../application/use-cases/exportar-compras.use-case';
 import { ExportarCompraUseCase } from '../../application/use-cases/exportar-compra.use-case';
+import { GenerarPdfCompraUseCase } from '../../application/use-cases/generar-pdf-compra.use-case';
 import { espiado } from '../../../shared/test-helpers/espiado';
 import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
 import { ResolverTiposDeCompra } from '../../application/services/tipos-de-compra';
@@ -150,6 +151,7 @@ function buildController() {
   const listarOperacionesCompraUseCase = espiado(ListarOperacionesCompraUseCase);
   const exportarComprasUseCase = espiado(ExportarComprasUseCase);
   const exportarCompraUseCase = espiado(ExportarCompraUseCase);
+  const generarPdfCompraUseCase = espiado(GenerarPdfCompraUseCase);
   // odd/compras-por-tipo: cargador REAL sobre un repositorio de permisos falso.
   // USUARIO es ADMINISTRADOR, así que su alcance sale sin restricción y sin
   // consultar; `permisosDe` alimenta a un actor restringido cuando hace falta.
@@ -188,6 +190,7 @@ function buildController() {
     listarOperacionesCompraUseCase.caso,
     exportarComprasUseCase.caso,
     exportarCompraUseCase.caso,
+    generarPdfCompraUseCase.caso,
     alcances,
     tiposDeCompra,
   );
@@ -213,6 +216,7 @@ function buildController() {
     listarOperacionesCompraUseCase,
     exportarComprasUseCase,
     exportarCompraUseCase,
+    generarPdfCompraUseCase,
   };
 }
 
@@ -799,6 +803,52 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
       expect(listarComprasUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ tipoTicketId: TIPO_SOPORTE, alcance: SIN_RESTRICCION }),
       );
+    });
+  });
+
+  describe('GET /compras/:id/pdf (solicitud de compra en PDF)', () => {
+    function respuestaFalsa() {
+      const headers = new Map<string, string>();
+      return {
+        res: { setHeader: (nombre: string, valor: string) => void headers.set(nombre, valor) },
+        headers,
+      };
+    }
+
+    it('entrega el PDF como descarga y le pasa al use case la compra y el cliente del JWT', async () => {
+      const { controller, generarPdfCompraUseCase } = buildController();
+      generarPdfCompraUseCase.execute.mockResolvedValue(
+        Result.ok({
+          buffer: Buffer.from('%PDF-'),
+          nombreArchivo: 'solicitud-de-compra-COM-2026-00001.pdf',
+        }),
+      );
+      const { res, headers } = respuestaFalsa();
+
+      const salida = await controller.pdf(USUARIO, 'compra-1', res);
+
+      expect(salida).toBeInstanceOf(StreamableFile);
+      expect(generarPdfCompraUseCase.execute).toHaveBeenLastCalledWith({
+        compraId: 'compra-1',
+        clienteId: 'cliente-1',
+        clienteNombre: 'Cliente 1',
+      });
+      expect(headers.get('Content-Type')).toBe('application/pdf');
+      expect(headers.get('Content-Disposition')).toBe(
+        'attachment; filename="solicitud-de-compra-COM-2026-00001.pdf"',
+      );
+      expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
+    });
+
+    it('compra inexistente → 404', async () => {
+      const { controller, generarPdfCompraUseCase } = buildController();
+      generarPdfCompraUseCase.execute.mockResolvedValue(
+        Result.fail(new CompraNoEncontradaError('compra-1')),
+      );
+
+      await expect(
+        controller.pdf(USUARIO, 'compra-1', respuestaFalsa().res),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 

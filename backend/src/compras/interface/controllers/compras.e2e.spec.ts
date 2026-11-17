@@ -1803,6 +1803,13 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
         `${baseUrl}/compras/${deEdilicia.id}/export`,
         bearer(lector.accessToken),
       );
+      const ocultaPdf = await httpGet(
+        `${baseUrl}/compras/${deEdilicia.id}/pdf`,
+        bearer(lector.accessToken),
+      );
+      const visiblePdf = await fetch(`${baseUrl}/compras/${deSoporte.id}/pdf`, {
+        headers: bearer(lector.accessToken),
+      });
       const visibleExport = await fetch(`${baseUrl}/compras/${deSoporte.id}/export`, {
         headers: bearer(lector.accessToken),
       });
@@ -1812,6 +1819,15 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
       expect(ocultaOps.status).toBe(404);
       // odd/tasks/export-compra-individual.md, S4: la exportación no filtra lo que el detalle oculta.
       expect(ocultaExport.status).toBe(404);
+      // odd/tasks/compra-export-secciones-y-pdf.md, S7: el PDF tampoco.
+      expect(ocultaPdf.status).toBe(404);
+      expect(visiblePdf.status).toBe(200);
+      expect(visiblePdf.headers.get('Content-Type')).toBe('application/pdf');
+      expect(
+        Buffer.from(await visiblePdf.arrayBuffer())
+          .subarray(0, 5)
+          .toString('latin1'),
+      ).toBe('%PDF-');
       expect(visibleExport.status).toBe(200);
       expect(visibleExport.headers.get('Content-Disposition')).toContain(
         `compra-${deSoporte.numero}-`,
