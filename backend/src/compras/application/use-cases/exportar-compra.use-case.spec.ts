@@ -188,6 +188,41 @@ describe('ExportarCompraUseCase', () => {
     expect(hoja.getRow(2).getCell(columna).value).toBe(descripcion);
   });
 
+  it('neutraliza fórmulas en el texto libre de la compra y del ítem (CSV)', async () => {
+    const [, fila] = await exportarCsv(
+      crearCompra(
+        [crearItem({ descripcion: '+cmd', proveedor: '@SUM(1)', observaciones: '-2+3' })],
+        { motivo: '=HYPERLINK("x")' },
+      ),
+    );
+
+    expect(fila).toContain(`"'=HYPERLINK(""x"")"`);
+    expect(fila.split(';')).toEqual(expect.arrayContaining(["'+cmd", "'@SUM(1)", "'-2+3"]));
+  });
+
+  it('en xlsx una observación con forma de fórmula queda como texto', async () => {
+    const result = await new ExportarCompraUseCase(
+      crearRepo(crearCompra([crearItem({ observaciones: '=1+1' })])),
+      crearTipos(),
+    ).execute({ compraId: 'c1' }, 'xlsx');
+
+    const celda = (await leerXlsx(result.getValue().contenido)).worksheets[0]
+      .getRow(2)
+      .getCell(COLUMNAS_ESPERADAS.length);
+    expect(celda.value).toBe('=1+1');
+    expect(celda.formula).toBeUndefined();
+  });
+
+  it('una compra con todos sus ítems eliminados exporta solo el encabezado', async () => {
+    const borrado = crearItem();
+    borrado.softDelete();
+
+    const [encabezado, ...resto] = await exportarCsv(crearCompra([borrado]));
+
+    expect(encabezado.split(';')).toEqual(COLUMNAS_ESPERADAS);
+    expect(resto.filter((fila) => fila !== '')).toHaveLength(0);
+  });
+
   it('compra inexistente → CompraNoEncontradaError', async () => {
     const result = await new ExportarCompraUseCase(crearRepo(null), crearTipos()).execute({
       compraId: 'c1',
