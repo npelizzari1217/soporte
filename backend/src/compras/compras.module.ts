@@ -46,6 +46,7 @@ import { CerrarItemConFaltanteUseCase } from './application/use-cases/cerrar-ite
 import { CancelarCompraUseCase } from './application/use-cases/cancelar-compra.use-case';
 import { ListarComprasUseCase } from './application/use-cases/listar-compras.use-case';
 import { ExportarComprasUseCase } from './application/use-cases/exportar-compras.use-case';
+import { ExportarCompraUseCase } from './application/use-cases/exportar-compra.use-case';
 import { ObtenerCompraUseCase } from './application/use-cases/obtener-compra.use-case';
 import { ListarOperacionesCompraUseCase } from './application/use-cases/listar-operaciones-compra.use-case';
 
@@ -347,6 +348,12 @@ import { ComprasController } from './interface/controllers/compras.controller';
       provide: ExportarComprasUseCase,
       useFactory: (compraRepo: ICompraRepository, tipos: ResolverTiposDeCompra) =>
         new ExportarComprasUseCase(compraRepo, tipos),
+      inject: [COMPRA_REPOSITORY, ResolverTiposDeCompra],
+    },
+    {
+      provide: ExportarCompraUseCase,
+      useFactory: (compraRepo: ICompraRepository, tipos: ResolverTiposDeCompra) =>
+        new ExportarCompraUseCase(compraRepo, tipos),
       inject: [COMPRA_REPOSITORY, ResolverTiposDeCompra],
     },
   ],

@@ -24,6 +24,7 @@
  *   POST   /compras/:id/cancelar                                  → CancelarCompraUseCase               [COMPRAS:BORRADO]
  *   GET    /compras                                               → ListarComprasUseCase                [COMPRAS:LECTURA]
  *   GET    /compras/export                                        → ExportarComprasUseCase              [COMPRAS:LECTURA]
+ *   GET    /compras/:id/export                                    → ExportarCompraUseCase               [COMPRAS:LECTURA]
  *   GET    /compras/:id                                           → ObtenerCompraUseCase                [COMPRAS:LECTURA]
  *   GET    /compras/:id/operaciones                               → ListarOperacionesCompraUseCase      [COMPRAS:LECTURA]
  *
@@ -126,6 +127,7 @@ import { ListarComprasUseCase } from '../../application/use-cases/listar-compras
 import { ObtenerCompraUseCase } from '../../application/use-cases/obtener-compra.use-case';
 import { ListarOperacionesCompraUseCase } from '../../application/use-cases/listar-operaciones-compra.use-case';
 import { ExportarComprasUseCase } from '../../application/use-cases/exportar-compras.use-case';
+import { ExportarCompraUseCase } from '../../application/use-cases/exportar-compra.use-case';
 
 import {
   CantidadOrdenadaExcedeSolicitadaError,
@@ -324,6 +326,7 @@ export class ComprasController {
     private readonly obtenerCompraUseCase: ObtenerCompraUseCase,
     private readonly listarOperacionesCompraUseCase: ListarOperacionesCompraUseCase,
     private readonly exportarComprasUseCase: ExportarComprasUseCase,
+    private readonly exportarCompraUseCase: ExportarCompraUseCase,
     private readonly alcances: CargadorAlcanceTicket,
     private readonly tiposDeCompra: ResolverTiposDeCompra,
   ) {}
@@ -867,6 +870,26 @@ export class ComprasController {
     }
     const { compra, seguimientoPorInsumo } = result.getValue();
     return this.detalle(compra, seguimientoPorInsumo);
+  }
+
+  /**
+   * GET /compras/:id/export
+   * Exporta UNA compra a CSV o xlsx, una fila por ítem
+   * (odd/tasks/export-compra-individual.md). Mismo gate que el detalle.
+   * @throws 404 compra inexistente, eliminada, u oculta por tipo (`VisibilidadCompraGuard`)
+   */
+  @Get(':id/export')
+  @RequiereAcciones('COMPRAS:LECTURA')
+  async exportarUna(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: RespuestaConHeaders,
+    @Query('formato', ParseFormatoExportPipe) formato: FormatoExport = 'csv',
+  ): Promise<string | StreamableFile> {
+    const result = await this.exportarCompraUseCase.execute({ compraId: id }, formato);
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return entregarExport(res, formato, result.getValue());
   }
 
   /**
