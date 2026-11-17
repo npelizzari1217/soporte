@@ -23,18 +23,27 @@ interface ColumnaTabla {
   titulo: string;
   ancho: number;
   alinear: 'left' | 'right' | 'center';
+  /**
+   * Celda de una sola línea (importes, cantidad, estado): si el texto no
+   * entra se achica la fuente en vez de partirlo, porque un importe partido
+   * en dos renglones se lee como dos números.
+   */
+  ajustar: boolean;
 }
+
+/** Tamaño mínimo al que se achica una celda de una sola línea. */
+const FUENTE_MINIMA = 6;
 
 /** Columnas de la tabla de ítems; suman el ancho útil de un A4 con `MARGEN`. */
 const COLUMNAS: readonly ColumnaTabla[] = [
-  { titulo: '#', ancho: 20, alinear: 'center' },
-  { titulo: 'Descripción', ancho: 141, alinear: 'left' },
-  { titulo: 'Cant.', ancho: 34, alinear: 'right' },
-  { titulo: 'Proveedor', ancho: 78, alinear: 'left' },
-  { titulo: 'Moneda', ancho: 36, alinear: 'center' },
-  { titulo: 'Precio unit.', ancho: 68, alinear: 'right' },
-  { titulo: 'Total', ancho: 70, alinear: 'right' },
-  { titulo: 'Estado', ancho: 58, alinear: 'center' },
+  { titulo: '#', ancho: 18, alinear: 'center', ajustar: true },
+  { titulo: 'Descripción', ancho: 125, alinear: 'left', ajustar: false },
+  { titulo: 'Cant.', ancho: 32, alinear: 'right', ajustar: true },
+  { titulo: 'Proveedor', ancho: 72, alinear: 'left', ajustar: false },
+  { titulo: 'Moneda', ancho: 42, alinear: 'center', ajustar: true },
+  { titulo: 'Precio unit.', ancho: 76, alinear: 'right', ajustar: true },
+  { titulo: 'Total', ancho: 82, alinear: 'right', ajustar: true },
+  { titulo: 'Estado', ancho: 58, alinear: 'center', ajustar: true },
 ];
 
 export interface OpcionesPdfkitCompra {
@@ -62,7 +71,9 @@ export class PdfkitGeneradorPdfCompra implements IGeneradorPdfCompra {
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({
         size: 'A4',
-        margin: MARGEN,
+        // El margen inferior incluye el pie: el salto de página automático de
+        // un texto larguísimo corta antes de la franja donde va "Página X de Y".
+        margins: { top: MARGEN, left: MARGEN, right: MARGEN, bottom: MARGEN + ALTO_PIE },
         bufferPages: true,
         compress: this.opciones.compress ?? true,
         info: { Title: `Solicitud de compra ${vista.numero}`, Subject: vista.motivo },
@@ -203,7 +214,9 @@ export class PdfkitGeneradorPdfCompra implements IGeneradorPdfCompra {
       doc.font('Helvetica').fontSize(9);
       const altoCeldas = Math.max(
         ...celdas.map((texto, c) =>
-          doc.heightOfString(texto, { width: COLUMNAS[c].ancho - PADDING_CELDA * 2 }),
+          COLUMNAS[c].ajustar
+            ? doc.currentLineHeight()
+            : doc.heightOfString(texto, { width: COLUMNAS[c].ancho - PADDING_CELDA * 2 }),
         ),
       );
       doc.fontSize(7.5);
@@ -225,13 +238,16 @@ export class PdfkitGeneradorPdfCompra implements IGeneradorPdfCompra {
       celdas.forEach((texto, c) => {
         const columna = COLUMNAS[c];
         const esEstado = c === COLUMNAS.length - 1;
+        const fuente = esEstado ? 'Helvetica-Bold' : 'Helvetica';
+        const anchoUtil = columna.ancho - PADDING_CELDA * 2;
         doc
-          .font(esEstado ? 'Helvetica-Bold' : 'Helvetica')
-          .fontSize(9)
+          .font(fuente)
+          .fontSize(columna.ajustar ? this.tamanioQueEntra(doc, texto, anchoUtil, 9) : 9)
           .fillColor(esEstado ? COLOR_APROBACION[item.aprobacion] : COLOR_TEXTO);
         doc.text(texto, x + PADDING_CELDA, y + PADDING_CELDA, {
-          width: columna.ancho - PADDING_CELDA * 2,
+          width: anchoUtil,
           align: columna.alinear,
+          lineBreak: !columna.ajustar,
         });
         x += columna.ancho;
       });
@@ -256,13 +272,29 @@ export class PdfkitGeneradorPdfCompra implements IGeneradorPdfCompra {
     });
   }
 
+  /** Mayor tamaño de fuente, hasta `maximo`, con el que `texto` entra en `ancho` sin partirse. */
+  private tamanioQueEntra(
+    doc: PDFKit.PDFDocument,
+    texto: string,
+    ancho: number,
+    maximo: number,
+  ): number {
+    let tamanio = maximo;
+    while (tamanio > FUENTE_MINIMA && doc.fontSize(tamanio).widthOfString(texto) > ancho) {
+      tamanio -= 0.5;
+    }
+    return tamanio;
+  }
+
   private encabezadoTabla(doc: PDFKit.PDFDocument): void {
     const y = doc.y;
     const alto = 20;
     doc.rect(MARGEN, y, this.ancho(doc), alto).fill(COLOR_ACENTO);
     let x = MARGEN;
-    doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#ffffff');
+    doc.font('Helvetica-Bold').fillColor('#ffffff');
     for (const columna of COLUMNAS) {
+      const anchoUtil = columna.ancho - PADDING_CELDA * 2;
+      doc.fontSize(this.tamanioQueEntra(doc, columna.titulo, anchoUtil, 8.5));
       doc.text(columna.titulo, x + PADDING_CELDA, y + 6, {
         width: columna.ancho - PADDING_CELDA * 2,
         align: columna.alinear,

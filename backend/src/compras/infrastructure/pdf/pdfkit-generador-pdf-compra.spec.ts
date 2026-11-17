@@ -17,6 +17,17 @@ function textoDePdf(pdf: Buffer): string {
   return lineas.join('\n');
 }
 
+/** Corridas de texto con su posición vertical: pdfkit escribe `1 0 0 1 x y Tm`, la fuente y después el `TJ`. */
+function corridas(pdf: Buffer): Array<{ texto: string; y: number }> {
+  const patron = /1 0 0 1 [\d.-]+ ([\d.-]+) Tm\s*(?:\/F\d+ [\d.]+ Tf\s*)?\[([^\]]*)\]\s*TJ/g;
+  return [...pdf.toString('latin1').matchAll(patron)].map((m) => ({
+    y: Number(m[1]),
+    texto: [...m[2].matchAll(/<([0-9a-fA-F]*)>/g)]
+      .map((h) => Buffer.from(h[1], 'hex').toString('latin1'))
+      .join(''),
+  }));
+}
+
 function cantidadDePaginas(pdf: Buffer): number {
   return [...pdf.toString('latin1').matchAll(/\/Type \/Page\b/g)].length;
 }
@@ -96,6 +107,40 @@ describe('PdfkitGeneradorPdfCompra', () => {
     );
 
     expect(texto.split('\n').filter((linea) => linea === '99.999.999,99')).toHaveLength(2);
+  });
+
+  it('el encabezado "Moneda" entra en una sola línea', async () => {
+    const textos = corridas(await generador.generar(vista())).map((c) => c.texto);
+
+    expect(textos).toContain('Moneda');
+    expect(textos).not.toContain('Mone');
+  });
+
+  it('importes de nueve y diez cifras entran en sus columnas sin partirse', async () => {
+    const textos = corridas(
+      await generador.generar(
+        vista({ items: [item({ precioUnitario: '999.999.999,99', total: '9.999.999.999,99' })] }),
+      ),
+    ).map((c) => c.texto);
+
+    expect(textos).toContain('999.999.999,99');
+    expect(textos).toContain('9.999.999.999,99');
+  });
+
+  it('un texto larguísimo pagina sin invadir la franja del pie', async () => {
+    const pdf = await generador.generar(
+      vista({
+        descripcion: 'contexto '.repeat(600),
+        items: [item({ observaciones: 'palabra '.repeat(400) })],
+      }),
+    );
+    // Origen abajo: el pie ocupa y < MARGEN + ALTO_PIE (45 + 36 = 81).
+    const delPie = corridas(pdf).filter((c) => c.y < 81);
+
+    expect(cantidadDePaginas(pdf)).toBeGreaterThan(1);
+    // El parser tiene que ver el pie real; si no, "nadie invade" no probaría nada.
+    expect(delPie.some((c) => c.texto.startsWith('Página '))).toBe(true);
+    expect(delPie.filter((c) => !/^(COM-|Página )/.test(c.texto))).toEqual([]);
   });
 
   it('lista cada ítem con precio y total en su moneda, su estado y el detalle de cotización y observaciones', async () => {
