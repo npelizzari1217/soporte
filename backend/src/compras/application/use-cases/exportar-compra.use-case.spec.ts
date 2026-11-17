@@ -10,10 +10,19 @@ import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity, ItemCompraCreateProps } from '../../domain/entities/item-compra.entity';
 import { ICompraRepository } from '../../domain/ports/i-compra.repository';
 import { ResolverTiposDeCompra } from '../services/tipos-de-compra';
+import { ResolverNombresSolicitantes } from '../services/nombres-de-solicitantes';
 
 const BOM = '\uFEFF';
 
-const COLUMNAS_COMPRA = ['Número', 'Fecha de solicitud', 'Motivo', 'Descripción', 'Tipo', 'Estado'];
+const COLUMNAS_COMPRA = [
+  'Número',
+  'Fecha de solicitud',
+  'Motivo',
+  'Descripción',
+  'Solicitante',
+  'Tipo',
+  'Estado',
+];
 
 const COLUMNAS_ITEM = [
   'Descripción del ítem',
@@ -37,6 +46,15 @@ function crearTipos(): Pick<ResolverTiposDeCompra, 'resolver'> {
     resolver: vi
       .fn<ResolverTiposDeCompra['resolver']>()
       .mockResolvedValue(new Map([['tipo-soporte', { id: 'tipo-soporte', nombre: 'Soporte' }]])),
+  };
+}
+
+/** Nombres de la base master: solo `solicitante-1` tiene nombre conocido. */
+function crearSolicitantes(): Pick<ResolverNombresSolicitantes, 'resolver'> {
+  return {
+    resolver: vi
+      .fn<ResolverNombresSolicitantes['resolver']>()
+      .mockResolvedValue(new Map([['solicitante-1', 'Ana Pérez']])),
   };
 }
 
@@ -87,7 +105,11 @@ function lineas(contenido: string): string[] {
 }
 
 async function exportarCsv(compra: CompraEntity): Promise<string[]> {
-  const result = await new ExportarCompraUseCase(crearRepo(compra), crearTipos()).execute({
+  const result = await new ExportarCompraUseCase(
+    crearRepo(compra),
+    crearTipos(),
+    crearSolicitantes(),
+  ).execute({
     compraId: 'c1',
   });
   return lineas(result.getValue().contenido);
@@ -105,6 +127,7 @@ describe('ExportarCompraUseCase', () => {
       '19/08/2026',
       'Reposición de equipos',
       'Renovación del laboratorio',
+      'Ana Pérez',
       'Soporte',
       'Pendiente',
     ]);
@@ -143,6 +166,7 @@ describe('ExportarCompraUseCase', () => {
       await new ExportarCompraUseCase(
         crearRepo(crearCompra([crearItem({ descripcion })])),
         crearTipos(),
+        crearSolicitantes(),
       ).execute({ compraId: 'c1' })
     ).getValue().contenido;
 
@@ -170,6 +194,12 @@ describe('ExportarCompraUseCase', () => {
     expect(lineasCsv[3].split(';')).toEqual(COLUMNAS_ITEM);
   });
 
+  it('un solicitante que ya no está en master deja vacía la celda Solicitante', async () => {
+    const lineasCsv = await exportarCsv(crearCompra([crearItem()], { solicitanteId: 'borrado' }));
+
+    expect(lineasCsv[1].split(';')[COLUMNAS_COMPRA.indexOf('Solicitante')]).toBe('');
+  });
+
   it('una compra sin tipo deja vacía la celda Tipo de la cabecera', async () => {
     const lineasCsv = await exportarCsv(crearCompra([crearItem()], { tipoTicketId: null }));
 
@@ -192,6 +222,7 @@ describe('ExportarCompraUseCase', () => {
     const result = await new ExportarCompraUseCase(
       crearRepo(crearCompra([crearItem()])),
       crearTipos(),
+      crearSolicitantes(),
     ).execute({ compraId: 'c1' }, 'xlsx');
 
     expect(result.getValue().nombreArchivo).toMatch(
@@ -204,6 +235,7 @@ describe('ExportarCompraUseCase', () => {
     const result = await new ExportarCompraUseCase(
       crearRepo(crearCompra([crearItem({ descripcion, observaciones: '=1+1' })])),
       crearTipos(),
+      crearSolicitantes(),
     ).execute({ compraId: 'c1' }, 'xlsx');
 
     const hoja = (await leerXlsx(result.getValue().contenido)).worksheets[0];
@@ -219,7 +251,11 @@ describe('ExportarCompraUseCase', () => {
   });
 
   it('compra inexistente → CompraNoEncontradaError', async () => {
-    const result = await new ExportarCompraUseCase(crearRepo(null), crearTipos()).execute({
+    const result = await new ExportarCompraUseCase(
+      crearRepo(null),
+      crearTipos(),
+      crearSolicitantes(),
+    ).execute({
       compraId: 'c1',
     });
 
@@ -231,6 +267,7 @@ describe('ExportarCompraUseCase', () => {
     const result = await new ExportarCompraUseCase(
       crearRepo(crearCompra([crearItem()], {}, new Date('2026-09-01T00:00:00.000Z'))),
       crearTipos(),
+      crearSolicitantes(),
     ).execute({ compraId: 'c1' });
 
     expect(result.getError()).toBeInstanceOf(CompraNoEncontradaError);

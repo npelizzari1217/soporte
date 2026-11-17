@@ -27,6 +27,7 @@ import { armarExportCsv } from '../../../shared/application/armar-export-csv';
 import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
 import { AccionTipoTicket } from '../../../tickets/domain/permisos-tipo-ticket';
 import { ResolverTiposDeCompra } from '../services/tipos-de-compra';
+import { ResolverNombresSolicitantes } from '../services/nombres-de-solicitantes';
 
 /** ADMINISTRADOR: sin restricción por tipo. Los tests anteriores al tipo corren con este alcance. */
 const SIN_RESTRICCION: AlcanceActorTicket = { actorId: 'admin-1', permisosPorTipo: null };
@@ -37,6 +38,15 @@ function crearTipos(): Pick<ResolverTiposDeCompra, 'resolver'> {
     resolver: vi
       .fn<ResolverTiposDeCompra['resolver']>()
       .mockResolvedValue(new Map([['tipo-soporte', { id: 'tipo-soporte', nombre: 'Soporte' }]])),
+  };
+}
+
+/** Nombres de la base master: solo `solicitante-1` tiene nombre conocido. */
+function crearSolicitantes(): Pick<ResolverNombresSolicitantes, 'resolver'> {
+  return {
+    resolver: vi
+      .fn<ResolverNombresSolicitantes['resolver']>()
+      .mockResolvedValue(new Map([['solicitante-1', 'Ana Pérez']])),
   };
 }
 
@@ -104,7 +114,11 @@ describe('ExportarComprasUseCase', () => {
   it('emite el encabezado y una línea por compra', async () => {
     const { repo } = crearRepo([crearCompra('c1'), crearCompra('c2')]);
 
-    const result = await new ExportarComprasUseCase(repo, crearTipos()).execute({
+    const result = await new ExportarComprasUseCase(
+      repo,
+      crearTipos(),
+      crearSolicitantes(),
+    ).execute({
       alcance: SIN_RESTRICCION,
     });
 
@@ -116,7 +130,9 @@ describe('ExportarComprasUseCase', () => {
     // archivo no puede quedarse con las 20 filas que se ven en pantalla.
     const { repo, findPaginaConItems } = crearRepo([crearCompra('c1')]);
 
-    await new ExportarComprasUseCase(repo, crearTipos()).execute({ alcance: SIN_RESTRICCION });
+    await new ExportarComprasUseCase(repo, crearTipos(), crearSolicitantes()).execute({
+      alcance: SIN_RESTRICCION,
+    });
 
     const filtros = findPaginaConItems.mock.calls[0][0] as CompraListFiltros;
     expect(filtros.limit).toBe(TOPE_FILAS_EXPORT);
@@ -127,7 +143,7 @@ describe('ExportarComprasUseCase', () => {
     const { repo, findPaginaConItems } = crearRepo([]);
     const fechaDesde = new Date('2026-01-01T00:00:00.000Z');
 
-    await new ExportarComprasUseCase(repo, crearTipos()).execute({
+    await new ExportarComprasUseCase(repo, crearTipos(), crearSolicitantes()).execute({
       alcance: SIN_RESTRICCION,
       estado: 'COMPLETADAS',
       sectorId: 'sector-1',
@@ -149,7 +165,9 @@ describe('ExportarComprasUseCase', () => {
     // muestra — el usuario no tendría forma de saber por qué no coinciden.
     const { repo, findPaginaConItems } = crearRepo([]);
 
-    await new ExportarComprasUseCase(repo, crearTipos()).execute({ alcance: SIN_RESTRICCION });
+    await new ExportarComprasUseCase(repo, crearTipos(), crearSolicitantes()).execute({
+      alcance: SIN_RESTRICCION,
+    });
 
     expect((findPaginaConItems.mock.calls[0][0] as CompraListFiltros).grupoEstado).toBe('ACTIVAS');
   });
@@ -159,7 +177,9 @@ describe('ExportarComprasUseCase', () => {
 
     const fila = lineas(
       (
-        await new ExportarComprasUseCase(repo, crearTipos()).execute({ alcance: SIN_RESTRICCION })
+        await new ExportarComprasUseCase(repo, crearTipos(), crearSolicitantes()).execute({
+          alcance: SIN_RESTRICCION,
+        })
       ).getValue().contenido,
     )[1];
 
@@ -175,7 +195,9 @@ describe('ExportarComprasUseCase', () => {
 
     const fila = lineas(
       (
-        await new ExportarComprasUseCase(repo, crearTipos()).execute({ alcance: SIN_RESTRICCION })
+        await new ExportarComprasUseCase(repo, crearTipos(), crearSolicitantes()).execute({
+          alcance: SIN_RESTRICCION,
+        })
       ).getValue().contenido,
     )[1];
 
@@ -189,7 +211,9 @@ describe('ExportarComprasUseCase', () => {
 
     const [encabezado, primera] = lineas(
       (
-        await new ExportarComprasUseCase(repo, crearTipos()).execute({ alcance: SIN_RESTRICCION })
+        await new ExportarComprasUseCase(repo, crearTipos(), crearSolicitantes()).execute({
+          alcance: SIN_RESTRICCION,
+        })
       ).getValue().contenido,
     );
 
@@ -207,7 +231,9 @@ describe('ExportarComprasUseCase', () => {
 
     const [encabezado] = lineas(
       (
-        await new ExportarComprasUseCase(repo, crearTipos()).execute({ alcance: SIN_RESTRICCION })
+        await new ExportarComprasUseCase(repo, crearTipos(), crearSolicitantes()).execute({
+          alcance: SIN_RESTRICCION,
+        })
       ).getValue().contenido,
     );
 
@@ -219,7 +245,11 @@ describe('ExportarComprasUseCase', () => {
     // archivo incompleto creyendo que está completo.
     const { repo } = crearRepo([crearCompra('c1')], TOPE_FILAS_EXPORT + 1);
 
-    const result = await new ExportarComprasUseCase(repo, crearTipos()).execute({
+    const result = await new ExportarComprasUseCase(
+      repo,
+      crearTipos(),
+      crearSolicitantes(),
+    ).execute({
       alcance: SIN_RESTRICCION,
     });
 
@@ -230,7 +260,11 @@ describe('ExportarComprasUseCase', () => {
   it('sin compras entrega el archivo con solo el encabezado', async () => {
     const { repo } = crearRepo([]);
 
-    const result = await new ExportarComprasUseCase(repo, crearTipos()).execute({
+    const result = await new ExportarComprasUseCase(
+      repo,
+      crearTipos(),
+      crearSolicitantes(),
+    ).execute({
       alcance: SIN_RESTRICCION,
     });
 
@@ -242,7 +276,9 @@ describe('ExportarComprasUseCase', () => {
     const { repo } = crearRepo([]);
 
     const { nombreArchivo } = (
-      await new ExportarComprasUseCase(repo, crearTipos()).execute({ alcance: SIN_RESTRICCION })
+      await new ExportarComprasUseCase(repo, crearTipos(), crearSolicitantes()).execute({
+        alcance: SIN_RESTRICCION,
+      })
     ).getValue();
 
     expect(nombreArchivo).toMatch(/^compras-\d{4}-\d{2}-\d{2}\.csv$/);
@@ -270,7 +306,9 @@ describe('ExportarComprasUseCase', () => {
 
       const { repo } = crearRepo([]);
       const { nombreArchivo } = (
-        await new ExportarComprasUseCase(repo, crearTipos()).execute({ alcance: SIN_RESTRICCION })
+        await new ExportarComprasUseCase(repo, crearTipos(), crearSolicitantes()).execute({
+          alcance: SIN_RESTRICCION,
+        })
       ).getValue();
 
       const nombreEsperadoPorHelper = armarExportCsv({
@@ -293,15 +331,16 @@ describe('ExportarComprasUseCase', () => {
   it('con formato xlsx entrega un libro con las mismas columnas y la fecha de solicitud como fecha real', async () => {
     const { repo } = crearRepo([crearCompra('c1')]);
 
-    const result = await new ExportarComprasUseCase(repo, crearTipos()).execute(
-      { alcance: SIN_RESTRICCION },
-      'xlsx',
-    );
+    const result = await new ExportarComprasUseCase(
+      repo,
+      crearTipos(),
+      crearSolicitantes(),
+    ).execute({ alcance: SIN_RESTRICCION }, 'xlsx');
 
     const { contenido, nombreArchivo } = result.getValue();
     expect(nombreArchivo).toMatch(/\.xlsx$/);
     const hoja = (await leerXlsx(contenido)).worksheets[0];
-    const csv = await new ExportarComprasUseCase(repo, crearTipos()).execute({
+    const csv = await new ExportarComprasUseCase(repo, crearTipos(), crearSolicitantes()).execute({
       alcance: SIN_RESTRICCION,
     });
     const encabezadosCsv = lineas(csv.getValue().contenido)[0].split(';');
@@ -312,10 +351,11 @@ describe('ExportarComprasUseCase', () => {
   it('con formato xlsx aplica el mismo tope de filas', async () => {
     const { repo } = crearRepo([crearCompra('c1')], TOPE_FILAS_EXPORT + 1);
 
-    const result = await new ExportarComprasUseCase(repo, crearTipos()).execute(
-      { alcance: SIN_RESTRICCION },
-      'xlsx',
-    );
+    const result = await new ExportarComprasUseCase(
+      repo,
+      crearTipos(),
+      crearSolicitantes(),
+    ).execute({ alcance: SIN_RESTRICCION }, 'xlsx');
 
     expect(result.isFail()).toBe(true);
   });
@@ -324,7 +364,7 @@ describe('ExportarComprasUseCase', () => {
     it('actor restringido: el alcance viaja como tiposVisibles (solo tipos con LECTURA), junto con el filtro de tipo', async () => {
       const { repo, findPaginaConItems } = crearRepo([]);
 
-      await new ExportarComprasUseCase(repo, crearTipos()).execute({
+      await new ExportarComprasUseCase(repo, crearTipos(), crearSolicitantes()).execute({
         tipoTicketId: 'tipo-edilicia',
         alcance: {
           actorId: 'usuario-1',
@@ -343,7 +383,9 @@ describe('ExportarComprasUseCase', () => {
     it('ADMINISTRADOR (sin restricción): el filtro de alcance no viaja', async () => {
       const { repo, findPaginaConItems } = crearRepo([]);
 
-      await new ExportarComprasUseCase(repo, crearTipos()).execute({ alcance: SIN_RESTRICCION });
+      await new ExportarComprasUseCase(repo, crearTipos(), crearSolicitantes()).execute({
+        alcance: SIN_RESTRICCION,
+      });
 
       expect(findPaginaConItems.mock.calls[0][0]).not.toHaveProperty('tiposVisibles');
     });
@@ -356,17 +398,20 @@ describe('ExportarComprasUseCase', () => {
 
       const [encabezado, conTipo, sinTipo] = lineas(
         (
-          await new ExportarComprasUseCase(repo, crearTipos()).execute({ alcance: SIN_RESTRICCION })
+          await new ExportarComprasUseCase(repo, crearTipos(), crearSolicitantes()).execute({
+            alcance: SIN_RESTRICCION,
+          })
         ).getValue().contenido,
       );
 
       const columnas = encabezado.split(';');
       const posicionTipo = columnas.indexOf('Tipo');
-      expect(columnas.slice(0, 5)).toEqual([
+      expect(columnas.slice(0, 6)).toEqual([
         'Número',
         'Fecha de solicitud',
         'Motivo',
         'Descripción',
+        'Solicitante',
         'Tipo',
       ]);
       expect(conTipo.split(';')[posicionTipo]).toBe('Soporte');
@@ -374,10 +419,37 @@ describe('ExportarComprasUseCase', () => {
     });
   });
 
+  describe('columna Solicitante', () => {
+    it('va antes de Tipo, con el nombre del solicitante; vacía si el usuario no está en master', async () => {
+      const solicitantes = crearSolicitantes();
+      const { repo } = crearRepo([
+        crearCompra('c1', [], { numero: 'COM-2026-00001' }),
+        crearCompra('c2', [], { numero: 'COM-2026-00002', solicitanteId: 'borrado' }),
+      ]);
+
+      const result = await new ExportarComprasUseCase(repo, crearTipos(), solicitantes).execute({
+        alcance: SIN_RESTRICCION,
+      });
+
+      const [encabezado, conNombre, sinNombre] = lineas(result.getValue().contenido);
+      const columnas = encabezado.split(';');
+      const posicion = columnas.indexOf('Solicitante');
+      expect(posicion).toBe(columnas.indexOf('Tipo') - 1);
+      expect(conNombre.split(';')[posicion]).toBe('Ana Pérez');
+      expect(sinNombre.split(';')[posicion]).toBe('');
+      // Un solo pedido a master por exportación, no uno por compra.
+      expect(solicitantes.resolver).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('columna Descripción', () => {
     async function exportarCsv(compras: CompraEntity[]): Promise<string> {
       const { repo } = crearRepo(compras);
-      const result = await new ExportarComprasUseCase(repo, crearTipos()).execute({
+      const result = await new ExportarComprasUseCase(
+        repo,
+        crearTipos(),
+        crearSolicitantes(),
+      ).execute({
         alcance: SIN_RESTRICCION,
       });
       return result.getValue().contenido;
@@ -415,10 +487,11 @@ describe('ExportarComprasUseCase', () => {
       const descripcion = 'Detalle\ncompleto ' + 'y'.repeat(1500);
       const { repo } = crearRepo([crearCompra('c1', [], { descripcion })]);
 
-      const result = await new ExportarComprasUseCase(repo, crearTipos()).execute(
-        { alcance: SIN_RESTRICCION },
-        'xlsx',
-      );
+      const result = await new ExportarComprasUseCase(
+        repo,
+        crearTipos(),
+        crearSolicitantes(),
+      ).execute({ alcance: SIN_RESTRICCION }, 'xlsx');
 
       const hoja = (await leerXlsx(result.getValue().contenido)).worksheets[0];
       const encabezados = (hoja.getRow(1).values as unknown[]).slice(1);

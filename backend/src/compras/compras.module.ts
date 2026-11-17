@@ -365,9 +365,12 @@ import { ComprasController } from './interface/controllers/compras.controller';
     },
     {
       provide: ExportarComprasUseCase,
-      useFactory: (compraRepo: ICompraRepository, tipos: ResolverTiposDeCompra) =>
-        new ExportarComprasUseCase(compraRepo, tipos),
-      inject: [COMPRA_REPOSITORY, ResolverTiposDeCompra],
+      useFactory: (
+        compraRepo: ICompraRepository,
+        tipos: ResolverTiposDeCompra,
+        solicitantes: ResolverNombresSolicitantes,
+      ) => new ExportarComprasUseCase(compraRepo, tipos, solicitantes),
+      inject: [COMPRA_REPOSITORY, ResolverTiposDeCompra, ResolverNombresSolicitantes],
     },
     { provide: GENERADOR_PDF_COMPRA, useFactory: () => new PdfkitGeneradorPdfCompra() },
     {
@@ -389,9 +392,12 @@ import { ComprasController } from './interface/controllers/compras.controller';
     },
     {
       provide: ExportarCompraUseCase,
-      useFactory: (compraRepo: ICompraRepository, tipos: ResolverTiposDeCompra) =>
-        new ExportarCompraUseCase(compraRepo, tipos),
-      inject: [COMPRA_REPOSITORY, ResolverTiposDeCompra],
+      useFactory: (
+        compraRepo: ICompraRepository,
+        tipos: ResolverTiposDeCompra,
+        solicitantes: ResolverNombresSolicitantes,
+      ) => new ExportarCompraUseCase(compraRepo, tipos, solicitantes),
+      inject: [COMPRA_REPOSITORY, ResolverTiposDeCompra, ResolverNombresSolicitantes],
     },
   ],
   exports: [COMPRA_REPOSITORY, OPERACION_COMPRA_REPOSITORY],

@@ -17,6 +17,7 @@ import { CompraNoEncontradaError } from '../../domain/errors/compras.errors';
 import { ICompraRepository } from '../../domain/ports/i-compra.repository';
 import { EstadoAprobacionItem } from '../../domain/services/estado-compra';
 import { ResolverTiposDeCompra, tipoDeCompra } from '../services/tipos-de-compra';
+import { ResolverNombresSolicitantes } from '../services/nombres-de-solicitantes';
 import { ETIQUETA_ESTADO } from './exportar-compras.use-case';
 
 /** Etiquetas del estado de aprobación de un ítem, las mismas que muestra la pantalla del detalle. */
@@ -43,6 +44,7 @@ export class ExportarCompraUseCase {
   constructor(
     private readonly compraRepo: Pick<ICompraRepository, 'findByIdConItems'>,
     private readonly tipos: Pick<ResolverTiposDeCompra, 'resolver'>,
+    private readonly solicitantes: Pick<ResolverNombresSolicitantes, 'resolver'>,
   ) {}
 
   /**
@@ -59,14 +61,18 @@ export class ExportarCompraUseCase {
       return Result.fail(new CompraNoEncontradaError(dto.compraId));
     }
 
-    const tipos = await this.tipos.resolver([compra.tipoTicketId]);
+    const [tipos, nombres] = await Promise.all([
+      this.tipos.resolver([compra.tipoTicketId]),
+      this.solicitantes.resolver([compra.solicitanteId]),
+    ]);
+    const solicitante = nombres.get(compra.solicitanteId) ?? null;
     const nombreTipo = tipoDeCompra(compra.tipoTicketId, tipos)?.nombre ?? null;
     const items = compra.items.filter((item) => !item.isDeleted());
 
     return Result.ok(
       await armarExportSecciones({
         secciones: [
-          seccionExport([compra], ExportarCompraUseCase.columnasCompra(nombreTipo)),
+          seccionExport([compra], ExportarCompraUseCase.columnasCompra(nombreTipo, solicitante)),
           seccionExport(items, COLUMNAS_ITEM),
         ],
         prefijo: `compra-${compra.numero}`,
@@ -76,12 +82,16 @@ export class ExportarCompraUseCase {
   }
 
   /** Cabecera: una fila de títulos y una de valores (odd/tasks/compra-export-secciones-y-pdf.md, S1). */
-  private static columnasCompra(nombreTipo: string | null): readonly ColumnaCsv<CompraEntity>[] {
+  private static columnasCompra(
+    nombreTipo: string | null,
+    solicitante: string | null,
+  ): readonly ColumnaCsv<CompraEntity>[] {
     return [
       { encabezado: 'Número', valor: (compra) => compra.numero },
       { encabezado: 'Fecha de solicitud', valor: (compra) => fechaCelda(compra.fechaSolicitud) },
       { encabezado: 'Motivo', valor: (compra) => compra.motivo },
       { encabezado: 'Descripción', valor: (compra) => compra.descripcion },
+      { encabezado: 'Solicitante', valor: () => solicitante },
       { encabezado: 'Tipo', valor: () => nombreTipo },
       { encabezado: 'Estado', valor: (compra) => ETIQUETA_ESTADO[compra.estado] },
     ];

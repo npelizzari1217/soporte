@@ -102,7 +102,7 @@ despliega un menú con dos formatos:
   para importarlo en otro sistema.
 
 El archivo trae una fila por compra con el número, la fecha de solicitud, el
-motivo, la descripción completa, el tipo, el estado, si está comprada y si está cerrada, y una columna de total por
+motivo, la descripción completa, el solicitante, el tipo, el estado, si está comprada y si está cerrada, y una columna de total por
 cada moneda que aparezca en las compras exportadas. La celda de una moneda queda
 vacía cuando la compra no tiene importes en ella.
 
@@ -143,7 +143,7 @@ Dentro de una compra, el botón **Exportar** de arriba a la derecha descarga esa
 compra sola, en **Excel** o en **CSV**.
 
 - **Arriba, los datos generales de la compra**: una fila con los títulos
-  (número, fecha de solicitud, motivo, descripción, tipo y estado) y otra con
+  (número, fecha de solicitud, motivo, descripción, solicitante, tipo y estado) y otra con
   sus valores.
 - **Una fila vacía** que separa las dos partes.
 - **Abajo, los ítems**: una fila por ítem, con la descripción completa, la
