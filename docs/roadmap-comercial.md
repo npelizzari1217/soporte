@@ -4,9 +4,10 @@ Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI 
 Jira Service Management, y prioriza qué falta para competir.
 
 **Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
-decisión.** Actualizado el 2026-10-27 contra el código de `main` (`a2f312fa`),
-archivo por archivo (el contraste anterior fue el 2026-10-16, contra `23fbf939`; lo que
-cambió desde entonces está en "Recontraste del 2026-10-27"). Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
+decisión.** Actualizado el 2026-11-17 contra el código de `main` (`d2527894`),
+archivo por archivo (el contraste anterior fue el 2026-10-27, contra `a2f312fa`; lo que
+cambió desde entonces está en "Recontraste del 2026-11-17", y lo de antes en "Recontraste
+del 2026-10-27"). Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
 diferido. La Fase 0 está integrada y sus dos gates viven en `main`. Desde el
 2026-09-29 la decisión de producto del punto 5 se cumple entera: el horario
 semanal pasó a ser por cliente. Desde esa fecha entraron a `main` cinco ciclos del
@@ -1354,6 +1355,9 @@ cabeza de alguien deja de existir cuando esa persona no está.
 > `05c0b5ce`, `odd/tasks/ayuda-tanda-final.md`), que escribió los artículos que faltaban y pasó
 > todos a español neutro con "usted". Se conserva como registro. Después de esa tanda la
 > suspensión vuelve a regir, y lo nuevo se anota en los commits (ver `AGENTS.md`).*
+>
+> *Nota del 2026-11-17: la deuda nueva, posterior a esa tanda, está en "Recontraste del
+> 2026-11-17", apartado "Deuda de Ayuda nueva".*
 
 La escritura de artículos de `backend/ayuda/*.md` está en pausa desde el 2026-09-07
 (ver `CLAUDE.md`). Esta lista arranca con el punto 7 de la segunda etapa; la deuda
@@ -1478,6 +1482,80 @@ esta sección y, sobre ella, el código.
   está configurado. No se lee desde el repositorio.
 - La reapertura del SLA (punto 6) ya no está pendiente: quedó decidida el 2026-10-27 (rama
   `docs/sla-reapertura`, integrada con este contraste).
+
+## Recontraste del 2026-11-17
+
+Contraste contra `main` (`d2527894`) de los 90 commits que entraron después de `a2f312fa`: trece
+merges y dos commits directos de documentación. Mismo criterio que el recontraste anterior: lo de
+arriba se conserva con su fecha; esta sección dice qué quedó **matizado** y qué se entregó. Ante una
+contradicción, manda esta sección y, sobre ella, el código.
+
+### Precisiones superadas
+
+- **Un ticket puede ser de obra externa** (merge `88664234`, `odd/tasks/edilicia-obra-externa.md`).
+  El ticket lleva modalidad `INTERNA` o `EXTERNA`; uno interno se comporta igual que antes. En uno
+  externo, las afirmaciones del punto 12 y de "El estado del ticket sigue a sus tareas" valen con
+  estos matices:
+  - **El avance** pondera cada tarea por su peso, que suma 100 % por ticket, en lugar de contar
+    tareas (`backend/src/tickets/domain/services/avance-tareas.ts:31`).
+  - **Una tarea certificada** no se repesa, no se borra ni se descompleta sin anular antes su
+    certificado (`TareaCertificadaError`, `backend/src/tickets/domain/errors/tareas.errors.ts:113`).
+    Matiza "descompletar se permite para corregir un error" y que descompletar en Resuelto
+    devuelve el ticket a En proceso.
+  - **El cierre sí se bloquea**: un ticket externo no se cierra con tareas sin certificar
+    (`TicketExternoConTareasSinCertificarError`,
+    `backend/src/tickets/domain/errors/certificados.errors.ts:60`). Matiza "El cierre no se
+    bloquea" (punto 12, CA5), que sigue valiendo para los tickets internos.
+  - **La métrica "tareas completadas por técnico"** solo cuenta tareas de tickets internos
+    (`backend/src/tickets/infrastructure/persistence/prisma/prisma-tarea-ticket.repository.ts:169`).
+  - **Un ticket con certificados vigentes no se borra** hasta anularlos (`ff010757`). Matiza el
+    borrado lógico de tickets del recontraste anterior.
+- **Una compra solo de servicios no bloquea el ticket** (`61e98a99`, `6b8055aa`). El bloqueo sigue
+  derivado, pero `comprasQueBloquean()` ahora deja afuera la compra cuyos ítems no rechazados son
+  todos de servicio, cualquiera sea la modalidad. El anclaje
+  `backend/src/reparaciones/domain/services/bloqueo-reparacion.ts:48` del punto 2 hoy es `:66`.
+- **Las exportaciones ya no son solo las 5 de listados** (segunda etapa, punto 3). Una compra se
+  exporta sola (`GET /compras/:id/export`, `8bc718e2`), con la cabecera arriba, una fila vacía y los
+  ítems abajo (`49deef29`). Ese archivo, a diferencia de los de listados, no lleva encabezado
+  congelado ni autofiltro: tiene dos tablas en la misma hoja. Además del PDF del ticket hay un PDF
+  de la compra, "Solicitud de compra" (`GET /compras/:id/pdf`, `1298e96e`). El listado de compras
+  exporta la descripción (`1b251108`).
+
+### Entregado desde el 2026-10-27
+
+| Entrega | Evidencia en `main` |
+|---|---|
+| Obra externa: modalidad, ítems de servicio, peso de tareas, certificados de avance con su PDF y permiso Certificar | merge `88664234` (`odd/tasks/edilicia-obra-externa.md`) |
+| Decisiones de obra externa: no borrar con certificados vigentes, aviso de pesos debajo de 100, bien rechazado que no bloquea | merge `a13711d8` (`odd/tasks/decisiones-obra-externa.md`) |
+| Autor de cada cambio en la línea de tiempo y filtro Desde/Hasta en el listado de tickets | merges `e34fcd0e` y `52d3ef2e` (`odd/tasks/autor-y-filtro-fechas.md`) |
+| Tope de conexiones por pool, aviso de saturación al usuario y alerta a ROOT | merges `3b0604bb` y `85b55ed1` (`odd/tasks/saturacion-conexiones.md`) |
+| Pantalla Operación para ROOT con correo de prueba de las alertas | merge `ef707ad0` |
+| Cambiar de cliente desde un detalle vuelve al listado de la sección | merge `f20e5488` |
+| Descripción en la exportación del listado de compras | merge `68d7b208` |
+| Exportación de una compra individual con sus ítems | merge `c6874d74` (`odd/tasks/export-compra-individual.md`) |
+| Exportación de una compra con cabecera arriba, PDF "Solicitud de compra" y solicitante en el listado y el detalle | merge `d2527894` (`odd/tasks/compra-export-secciones-y-pdf.md`) |
+
+### Deuda de Ayuda nueva
+
+Anotada en los commits, como pide la suspensión:
+
+- **Obra externa** (cadena del merge `88664234` y `a13711d8`): la modalidad del ticket; el ítem de
+  servicio y su efecto sobre el bloqueo; el peso de las tareas y la nueva fórmula del avance de un
+  ticket externo; cómo emitir y anular certificados, y su PDF; la regla de cierre de un ticket
+  externo; que la métrica de técnicos no cuenta obras externas; la columna Certificar de la grilla
+  de Permisos; y el aviso de pesos debajo de 100.
+- **Saturación** (`b1a02e42`): el aviso que ve el usuario cuando el sistema está saturado.
+
+Las entregas de tickets (autor y filtro de fechas) y de compras actualizaron su Ayuda en el mismo
+commit.
+
+### Lo que este contraste no pudo afirmar
+
+- El estado de producción más allá del deploy: el del 2026-11-17 (`d2527894`) migró 9 tenants y
+  respondió 200 desde afuera, pero qué clientes usan obra externa o tienen la API habilitada no se
+  lee desde el repositorio.
+- Si el umbral del check sigue siendo el adecuado: entre `a2f312fa` y `d2527894` pasaron 21 días y
+  90 commits, unos 4 por día, bastante menos que los ~13 por día con que se calibró el umbral de 75.
 
 ## Nota
 
